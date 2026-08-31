@@ -43,24 +43,64 @@ const MAX_ENRICH_CONCURRENCY = 8;
 const CANDIDATE_MULTIPLIER = 2;
 const MIN_CANDIDATES = 10;
 
-/** Interleaves several providers' results so no single source dominates. */
-function mergeRoundRobin(lists: RawResult[][], limit: number): RawResult[] {
-  const merged: RawResult[] = [];
-  const seen = new Set<string>();
-  const depth = Math.max(0, ...lists.map((l) => l.length));
-
-  for (let rank = 0; rank < depth && merged.length < limit; rank++) {
-    for (const list of lists) {
-      if (merged.length >= limit) break;
-      const item = list[rank];
-      if (!item) continue;
-      const key = item.url.replace(/\/+$/, "").toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(item);
+/** Canonical form of a URL, so the same page from two indexes counts once. */
+function urlKey(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.hash = "";
+    // Campaign parameters change nothing about the page.
+    for (const p of [...url.searchParams.keys()]) {
+      if (/^(utm_|fbclid|gclid|ref|source$)/i.test(p)) url.searchParams.delete(p);
     }
+    const path = url.pathname.replace(/\/+$/, "");
+    return `${url.hostname.replace(/^www\./, "")}${path}${url.search}`.toLowerCase();
+  } catch {
+    return raw.replace(/\/+$/, "").toLowerCase();
   }
-  return merged;
+}
+
+/**
+ * Reciprocal rank fusion.
+ *
+ * Round-robin interleaving treated every list position as equal, so a source's
+ * tenth-best result entered ahead of another source's second-best. RRF scores
+ * each document as the sum of 1/(k + rank) over the lists it appears in, which
+ * both respects each source's own ordering and rewards agreement between them
+ * — a page several indexes surface independently is the strongest signal an
+ * aggregator has. k=60 is the constant from the original paper; it damps the
+ * gap between the top few positions so one source cannot dictate the head.
+ */
+const RRF_K = 60;
+
+function fuseByRank(lists: { name: string; results: RawResult[] }[], limit: number): RawResult[] {
+  const scores = new Map<string, { score: number; item: RawResult; sources: Set<string> }>();
+
+  for (const list of lists) {
+    list.results.forEach((item, rank) => {
+      const key = urlKey(item.url);
+      const entry = scores.get(key);
+      const contribution = 1 / (RRF_K + rank + 1);
+
+      if (entry) {
+        entry.score += contribution;
+        entry.sources.add(list.name);
+        // Keep whichever copy carries the richer snippet.
+        if ((item.snippet?.length ?? 0) > (entry.item.snippet?.length ?? 0)) {
+          entry.item = { ...entry.item, snippet: item.snippet };
+        }
+        if (!entry.item.publishedAt && item.publishedAt) {
+          entry.item = { ...entry.item, publishedAt: item.publishedAt };
+        }
+      } else {
+        scores.set(key, { score: contribution, item, sources: new Set([list.name]) });
+      }
+    });
+  }
+
+  return [...scores.values()]
+    .sort((a, b) => b.score - a.score || b.sources.size - a.sources.size)
+    .slice(0, limit)
+    .map((e) => e.item);
 }
 
 /** Drops open-source results that share no meaningful term with the query. */
@@ -146,7 +186,7 @@ async function discover(
   const chosen = gated.length > 0 ? gated : answered;
 
   return {
-    results: mergeRoundRobin(chosen.map((s) => s.results), limit),
+    results: fuseByRank(chosen, limit),
     provider: chosen.map((s) => s.name).join("+"),
     degraded,
   };

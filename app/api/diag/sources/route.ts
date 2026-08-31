@@ -216,6 +216,21 @@ export async function GET(req: NextRequest) {
 
   const query = req.nextUrl.searchParams.get("q") ?? "vektör veritabanı nedir";
 
+  // Dumps one raw item so field names are read off the wire, not guessed.
+  const raw = req.nextUrl.searchParams.get("raw");
+  if (raw) {
+    const urls: Record<string, string> = {
+      marginalia: `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
+      stackexchange: `https://api.stackexchange.com/2.3/search/excerpts?order=desc&sort=relevance&q=${encodeURIComponent(query)}&site=stackoverflow&pagesize=2`,
+      npm: `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=2`,
+    };
+    if (!urls[raw]) return NextResponse.json({ error: "unknown_raw" }, { status: 400 });
+    const res = await safeFetch(urls[raw], { trusted: true, timeoutMs: 12_000 });
+    return new NextResponse(res.body.slice(0, 4000), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const results = await Promise.all(
     probes.map(async (probe) => {
       const started = Date.now();
