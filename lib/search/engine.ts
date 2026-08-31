@@ -486,6 +486,29 @@ async function discoverResults(
   };
 }
 
+/**
+ * Pages that are not UTF-8 (still common on older academic and news sites)
+ * decode into mojibake, which is worse than no content at all once it reaches
+ * a model. Honour the charset the response declares, in the header or in the
+ * document's own meta tag.
+ */
+function decodeHtml(buffer: Buffer, contentType: string): string {
+  const headerCharset = /charset=["']?([\w-]+)/i.exec(contentType)?.[1];
+  const ascii = buffer.subarray(0, 2048).toString("latin1");
+  const metaCharset =
+    /<meta[^>]+charset=["']?([\w-]+)/i.exec(ascii)?.[1] ??
+    /<meta[^>]+content=["'][^"']*charset=([\w-]+)/i.exec(ascii)?.[1];
+
+  const charset = (headerCharset ?? metaCharset ?? "utf-8").toLowerCase();
+  if (charset === "utf-8" || charset === "utf8") return buffer.toString("utf-8");
+
+  try {
+    return new TextDecoder(charset).decode(buffer);
+  } catch {
+    return buffer.toString("utf-8");
+  }
+}
+
 function extractReadableText($: cheerio.CheerioAPI): string {
   $("script, style, noscript, nav, header, footer, svg, form, iframe").remove();
   const paragraphs: string[] = [];
@@ -523,8 +546,8 @@ async function fetchPageContent(url: string): Promise<string> {
         chunks.push(value);
       }
     }
-    const html = Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf-8");
-    return extractReadableText(cheerio.load(html));
+    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+    return extractReadableText(cheerio.load(decodeHtml(buffer, contentType)));
   } catch {
     return "";
   } finally {
