@@ -3,7 +3,7 @@ import { CloudaError } from "@/lib/core/errors";
 import { filterUnsafe } from "@/lib/search/safety";
 import { fetchAndExtract } from "@/lib/search/extract";
 import { planQuery } from "@/lib/search/query";
-import { scoreResult } from "@/lib/search/scoring";
+import { scoreResult, MIN_USEFUL_RELEVANCE } from "@/lib/search/scoring";
 import { openProvidersForIntent, Provider } from "@/lib/search/providers";
 import type {
   QueryPlan,
@@ -354,6 +354,11 @@ export async function searchWeb(
     });
     if (withinWindow.length > 0) results = withinWindow;
   }
+
+  // Drop the plainly off-topic, but never to the point of returning nothing:
+  // a weak answer beats an empty one when no source covered the question.
+  const onTopic = results.filter((r) => r.scores.relevance >= MIN_USEFUL_RELEVANCE);
+  if (onTopic.length >= Math.min(3, results.length)) results = onTopic;
 
   results.sort((a, b) => b.scores.overall - a.scores.overall);
   results = diversifyByHost(results, maxResults);

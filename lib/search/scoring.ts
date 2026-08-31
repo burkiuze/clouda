@@ -197,6 +197,15 @@ const HALF_LIFE_BY_INTENT: Record<string, number> = {
   general: 24 * 90,
 };
 
+/**
+ * Relevance at or above this counts as "on topic" and is not penalised;
+ * below it, the whole score is scaled by how far short it falls.
+ */
+const RELEVANCE_FLOOR = 0.5;
+
+/** Results this far off topic are dropped outright when better ones exist. */
+export const MIN_USEFUL_RELEVANCE = 0.15;
+
 const WEIGHTS_BY_INTENT: Record<string, { r: number; c: number; f: number }> = {
   news: { r: 0.35, c: 0.25, f: 0.4 },
   finance: { r: 0.3, c: 0.3, f: 0.4 },
@@ -232,7 +241,16 @@ export function scoreResult(input: ScoreInput): QualityScores {
   }
 
   const w = WEIGHTS_BY_INTENT[intent] ?? WEIGHTS_BY_INTENT.general;
-  const overall = relevance * w.r + credibility * w.c + freshness * w.f;
+  const base = relevance * w.r + credibility * w.c + freshness * w.f;
+
+  // Relevance gates the result rather than merely contributing to it. Purely
+  // additive weighting let reputation outrank topicality: searching for
+  // "vektör veritabanı nedir" put Turkish Wikipedia's articles on viruses and
+  // mosquitoes — which match "vektör" in the biological sense and carry a 0.93
+  // credibility — above an on-topic AWS explainer scoring 0.40 for relevance.
+  // A page that is not about the question is worthless however reputable its
+  // host, so anything under the floor is scaled down in proportion.
+  const overall = base * Math.min(1, relevance / RELEVANCE_FLOOR);
 
   return {
     relevance: Number(relevance.toFixed(3)),
