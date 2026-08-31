@@ -2,14 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Clouda — Yapay zeka modelleri için web arama API'si",
+  title: "Clouda — Yapay zeka için web arama altyapısı",
   description:
-    "Clouda, yapay zeka modellerinin ve ajanlarının gerçek zamanlı web'de arama yapmasını sağlayan bir API platformudur. Ücretsiz kayıt ol, 2000 kredi kazan.",
-  metadataBase: new URL("https://clouda.dev"),
+    "Clouda, yapay zeka modellerinin ve ajanlarının gerçek zamanlı web'de arama yapmasını sağlayan API platformudur. Kayıt ol, 2000 ücretsiz kredi kazan.",
   openGraph: {
-    title: "Clouda — Yapay zeka modelleri için web arama API'si",
+    title: "Clouda — Yapay zeka için web arama altyapısı",
     description:
-      "Modellerinize gerçek zamanlı web arama gücü katın. Tek bir API çağrısı, temiz sonuçlar.",
+      "Modellerinize gerçek zamanlı web arama gücü katın. Tek API çağrısı, temiz sonuçlar.",
     siteName: "Clouda",
     type: "website",
   },
@@ -18,7 +17,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="tr">
-      <body className="bg-clouda-bg font-sans antialiased">{children}</body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="bg-clouda-bg antialiased">{children}</body>
     </html>
   );
 }

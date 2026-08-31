@@ -6,19 +6,33 @@ const config: Config = {
     extend: {
       colors: {
         clouda: {
-          bg: "#F6F3FF",
+          bg: "#EDE7FF",
+          panel: "#DDD3FF",
+          cyan: "#C7E9FF",
+          lime: "#DCFF57",
+          pink: "#FFD8F2",
+          mint: "#DFF7E4",
           violet: "#7C3AED",
-          violetDark: "#5B21B6",
-          lilac: "#C4B5FD",
-          ink: "#0B0714",
+          violetDark: "#4C1D95",
+          ink: "#0A0612",
+          inkSoft: "#171025",
         },
       },
       fontFamily: {
-        display: ["var(--font-display)", "system-ui", "sans-serif"],
+        sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
-      backgroundImage: {
-        "clouda-radial":
-          "radial-gradient(120% 120% at 100% 0%, #E9E1FF 0%, #F6F3FF 45%, #F6F3FF 100%)",
+      letterSpacing: {
+        tightest: "-0.045em",
+      },
+      keyframes: {
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+      },
+      animation: {
+        float: "float 6s ease-in-out infinite",
       },
     },
   },

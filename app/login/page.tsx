@@ -1,20 +1,35 @@
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/lib/auth";
 import Logo from "@/components/Logo";
+import { PixelArt, PixelScatter } from "@/components/PixelArt";
 
 export default async function LoginPage() {
   const session = await auth();
   if (session?.user) redirect("/dashboard");
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-clouda-radial px-6">
-      <div className="w-full max-w-sm rounded-3xl border border-black/10 bg-white p-8 shadow-xl shadow-clouda-violet/5">
-        <div className="flex justify-center">
-          <Logo />
-        </div>
-        <h1 className="mt-6 text-center text-xl font-bold text-clouda-ink">Clouda&apos;ya hoş geldin</h1>
-        <p className="mt-2 text-center text-sm text-black/50">
-          Google hesabınla giriş yap, anında 2000 ücretsiz kredi kazan.
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-clouda-bg px-5 py-16">
+      <PixelArt
+        shape="cloud"
+        className="pointer-events-none absolute -left-20 bottom-0 hidden w-[420px] opacity-70 md:block"
+        fill="#B9A6FF"
+        outline="#DCFF57"
+      />
+      <PixelScatter
+        className="pointer-events-none absolute right-0 top-0 hidden h-72 w-72 opacity-60 md:block"
+        color="#7C3AED"
+        count={24}
+        seed={13}
+      />
+
+      <div className="relative w-full max-w-md rounded-3xl border-2 border-clouda-ink bg-white p-9">
+        <Logo />
+        <h1 className="display mt-8 text-4xl">
+          Hoş geldin.
+        </h1>
+        <p className="mt-4 text-base leading-relaxed text-clouda-ink/60">
+          Google hesabınla gir, anında <strong className="text-clouda-ink">2000 ücretsiz kredi</strong>{" "}
+          hesabına tanımlansın.
         </p>
 
         <form
@@ -26,7 +41,7 @@ export default async function LoginPage() {
         >
           <button
             type="submit"
-            className="flex w-full items-center justify-center gap-3 rounded-full border border-black/10 bg-white px-5 py-3 text-sm font-semibold text-clouda-ink transition hover:bg-black/5"
+            className="flex w-full items-center justify-center gap-3 rounded-full bg-clouda-ink px-6 py-4 text-sm font-bold text-white transition hover:bg-clouda-violetDark"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
               <path
@@ -46,11 +61,11 @@ export default async function LoginPage() {
                 d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .95 4.97l3 2.33C4.66 5.17 6.65 3.58 9 3.58z"
               />
             </svg>
-            Google ile giriş yap
+            Google ile devam et
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-black/40">
+        <p className="mt-6 text-xs text-clouda-ink/40">
           Giriş yaparak kullanım koşullarını kabul etmiş olursun.
         </p>
       </div>

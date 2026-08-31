@@ -2,35 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-display: "Inter", system-ui, sans-serif;
-}
-
 html {
   scroll-behavior: smooth;
 }
 
 body {
-  color: #0b0714;
+  color: #0a0612;
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: #c4b5fd;
-  color: #0b0714;
+  background: #dcff57;
+  color: #0a0612;
+}
+
+/* fal-style oversized display headline: very tight tracking + leading */
+.display {
+  @apply font-black leading-[0.92] tracking-tightest;
 }
 
 .pill-nav-link {
-  @apply rounded-full px-4 py-2 text-sm font-medium text-clouda-ink/80 transition hover:bg-black/5 hover:text-clouda-ink;
+  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[15px] font-medium text-clouda-ink transition hover:bg-black/5;
+}
+
+.pill-dot {
+  @apply inline-block h-1.5 w-1.5 rounded-full bg-clouda-violet;
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-clouda-ink px-6 py-3 text-sm font-semibold text-white transition hover:bg-clouda-violetDark;
+  @apply inline-flex items-center justify-center gap-2 rounded-full bg-clouda-ink px-6 py-3 text-sm font-bold text-white transition hover:bg-clouda-violetDark;
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-6 py-3 text-sm font-semibold text-clouda-ink transition hover:border-black/20 hover:bg-black/5;
+  @apply inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-clouda-ink transition hover:bg-white/70;
+}
+
+.btn-outline-dark {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/25 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10;
+}
+
+/* Pixel/CRT sub-brand logotype, echoing the chunky italic wordmarks
+   used on product panels. */
+.pixel-mark {
+  @apply font-mono text-2xl font-bold italic uppercase tracking-tight;
+  text-shadow: 2px 0 0 currentColor;
 }
 
 .section-label {
-  @apply text-xs font-semibold uppercase tracking-[0.2em] text-clouda-violetDark;
+  @apply text-xs font-bold uppercase tracking-[0.22em] text-clouda-violetDark;
+}
+
+.card-mosaic {
+  @apply rounded-2xl p-6 text-sm leading-relaxed;
 }
