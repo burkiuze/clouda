@@ -400,6 +400,41 @@ export const hasSearchProviderKey = Boolean(
   process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.SERPER_API_KEY
 );
 
+const TURKISH_MAP: Record<string, string> = {
+  ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u",
+};
+
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[çğıöşüâîû]/g, (c) => TURKISH_MAP[c] ?? c)
+    .replace(/[^a-z0-9\s]/g, " ");
+}
+
+const STOPWORDS = new Set([
+  "nedir", "nasil", "ne", "mi", "mu", "ile", "icin", "ve", "veya", "bir", "the",
+  "what", "is", "are", "how", "to", "a", "an", "of", "for", "and", "in", "on",
+]);
+
+/**
+ * The open sources match on their own indexes, which for a general query can
+ * mean a Turkish Wikipedia article about viruses answering one about vector
+ * databases. Requiring a shared term with the query drops those rather than
+ * passing plausible-looking noise to a model.
+ */
+function isRelevant(result: SearchResult, queryTokens: string[]): boolean {
+  if (queryTokens.length === 0) return true;
+  const haystack = normalize(`${result.title} ${result.snippet}`);
+  return queryTokens.some((token) => haystack.includes(token));
+}
+
+function queryTokens(query: string): string[] {
+  return normalize(query)
+    .split(/\s+/)
+    .filter((t) => t.length >= 4 && !STOPWORDS.has(t))
+    .map((t) => t.slice(0, Math.max(4, t.length - 2)));
+}
+
 /** Interleaves each source's results so no single source crowds out the rest. */
 function mergeRoundRobin(lists: SearchResult[][], limit: number): SearchResult[] {
   const merged: SearchResult[] = [];
@@ -430,10 +465,13 @@ async function discoverResults(
     if (results.length > 0) return { results, source: source.name };
   }
 
+  const tokens = queryTokens(query);
   const settled = await Promise.all(
     openSources.map(async (source) => ({
       name: source.name,
-      results: filterUnsafe(await source.discover(query, maxResults, locale)),
+      results: filterUnsafe(await source.discover(query, maxResults, locale)).filter((r) =>
+        isRelevant(r, tokens)
+      ),
     }))
   );
   const answered = settled.filter((s) => s.results.length > 0);
