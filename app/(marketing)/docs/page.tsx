@@ -338,8 +338,18 @@ Content-Type: application/json`}</Code>
           <p className="mt-4 text-sm text-clouda-muted">
             <code className="font-mono">GET /api/v1/monitors</code> izleyicileri ve son olayları
             listeler, <code className="font-mono">DELETE /api/v1/monitors/&#123;id&#125;</code>{" "}
-            durdurur. Kontroller 15 dakikada bir çalışan zamanlanmış görevle yapılır; kredisi biten
-            hesabın izleyicileri hata döngüsüne girmek yerine duraklatılır.
+            durdurur. Kredisi biten hesabın izleyicileri hata döngüsüne girmek yerine
+            duraklatılır.
+          </p>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Kontrol sıklığı.</strong> Zamanlanmış
+            sweep <code className="font-mono">/api/cron/monitors</code> üzerinden çalışır. Vercel
+            Hobby planı günde bir defadan sık cron çalıştırmaya izin vermediği için varsayılan
+            zamanlama günlüktür; daha sık kontrol için Pro plana geçmek ya da bu uç noktayı harici
+            bir zamanlayıcıyla (<code className="font-mono">Authorization: Bearer $CRON_SECRET</code>{" "}
+            ile) çağırmak gerekir. <code className="font-mono">interval_minutes</code> sweep'ten
+            daha sık kontrol edilmesini sağlamaz; yalnızca bir izleyicinin ne kadar sıklıkla
+            kontrol edilmeye hak kazandığını belirler.
           </p>
         </Section>
 
