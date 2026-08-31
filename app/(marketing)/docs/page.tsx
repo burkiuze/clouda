@@ -48,7 +48,8 @@ Content-Type: application/json`}
           <pre className="mt-3 overflow-x-auto rounded-2xl bg-clouda-bg p-5 font-mono text-[13px]">
 {`{
   "query": "aranacak metin",
-  "max_results": 5   // opsiyonel, 1-10 arası, varsayılan 5
+  "max_results": 5,      // opsiyonel, 1-10 arası, varsayılan 5
+  "locale": "tr-TR"      // opsiyonel, sonuç dili/bölgesi, varsayılan tr-TR
 }`}
           </pre>
 
@@ -67,6 +68,7 @@ Content-Type: application/json`}
     }
   ],
   "took_ms": 842,
+  "source": "bing-rss",
   "credits_used": 10,
   "credits_remaining": 1990
 }`}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashApiKey } from "@/lib/apiKey";
-import { searchWeb } from "@/lib/search/engine";
+import { searchWeb, DEFAULT_LOCALE } from "@/lib/search/engine";
 import { CREDITS_PER_SEARCH } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_api_key" }, { status: 401 });
   }
 
-  let body: { query?: string; max_results?: number };
+  let body: { query?: string; max_results?: number; locale?: string };
   try {
     body = await req.json();
   } catch {
@@ -43,6 +43,10 @@ export async function POST(req: NextRequest) {
   }
 
   const maxResults = Math.min(Math.max(Number(body.max_results) || 5, 1), 10);
+  const locale =
+    typeof body.locale === "string" && /^[a-z]{2}(-[A-Z]{2})?$/.test(body.locale)
+      ? body.locale
+      : DEFAULT_LOCALE;
 
   if (apiKey.user.credits < CREDITS_PER_SEARCH) {
     return NextResponse.json(
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await searchWeb(query, { maxResults });
+  const result = await searchWeb(query, { maxResults, locale });
 
   const [, , updatedUser] = await prisma.$transaction([
     prisma.apiKey.update({
@@ -81,6 +85,7 @@ export async function POST(req: NextRequest) {
     query: result.query,
     results: result.results,
     took_ms: result.tookMs,
+    source: result.source,
     credits_used: CREDITS_PER_SEARCH,
     credits_remaining: updatedUser.credits,
   });

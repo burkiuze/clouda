@@ -60,7 +60,10 @@ function resolveResultUrl(href: string, base = "https://duckduckgo.com"): string
   }
 }
 
-type Discovery = (query: string, maxResults: number) => Promise<SearchResult[]>;
+/** BCP-47 market used to steer result language and region. */
+export const DEFAULT_LOCALE = "tr-TR";
+
+type Discovery = (query: string, maxResults: number, locale: string) => Promise<SearchResult[]>;
 
 const duckDuckGoHtml: Discovery = async (query, maxResults) => {
   const html = await getText("https://html.duckduckgo.com/html/", {
@@ -118,9 +121,11 @@ const duckDuckGoLite: Discovery = async (query, maxResults) => {
 };
 
 /** Bing publishes an RSS view of its result page, which datacenter IPs can read. */
-const bingRss: Discovery = async (query, maxResults) => {
+const bingRss: Discovery = async (query, maxResults, locale) => {
   const xml = await getText(
-    `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss&count=${maxResults * 2}`
+    `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss&count=${
+      maxResults * 2
+    }&mkt=${encodeURIComponent(locale)}&setlang=${encodeURIComponent(locale.split("-")[0])}`
   );
   return xml ? parseRss(xml, maxResults) : [];
 };
@@ -144,17 +149,22 @@ function parseRss(xml: string, maxResults: number): SearchResult[] {
 }
 
 /** News-shaped queries still deserve an answer when the general sources fail. */
-const googleNewsRss: Discovery = async (query, maxResults) => {
+const googleNewsRss: Discovery = async (query, maxResults, locale) => {
+  const [lang, region = lang.toUpperCase()] = locale.split("-");
   const xml = await getText(
-    `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=tr&gl=TR&ceid=TR:tr`
+    `https://news.google.com/rss/search?q=${encodeURIComponent(
+      query
+    )}&hl=${lang}&gl=${region}&ceid=${region}:${lang}`
   );
   return xml ? parseRss(xml, maxResults) : [];
 };
 
 /** Last resort: an encyclopaedic answer beats an empty response. */
-const wikipedia: Discovery = async (query, maxResults) => {
+const wikipedia: Discovery = async (query, maxResults, locale) => {
+  const primaryLang = locale.split("-")[0] || "en";
+  const langs = primaryLang === "en" ? ["en"] : [primaryLang, "en"];
   const out: SearchResult[] = [];
-  for (const lang of ["tr", "en"]) {
+  for (const lang of langs) {
     if (out.length >= maxResults) break;
     const json = await getText(
       `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
@@ -196,10 +206,11 @@ const sources: { name: string; discover: Discovery }[] = [
 
 async function discoverResults(
   query: string,
-  maxResults: number
+  maxResults: number,
+  locale: string
 ): Promise<{ results: SearchResult[]; source: string }> {
   for (const source of sources) {
-    const results = await source.discover(query, maxResults);
+    const results = await source.discover(query, maxResults, locale);
     if (results.length > 0) return { results, source: source.name };
   }
   return { results: [], source: "none" };
@@ -259,10 +270,13 @@ async function fetchPageContent(url: string): Promise<string> {
  */
 export async function searchWeb(
   query: string,
-  { maxResults = 5 }: { maxResults?: number } = {}
+  {
+    maxResults = 5,
+    locale = DEFAULT_LOCALE,
+  }: { maxResults?: number; locale?: string } = {}
 ): Promise<SearchResponse> {
   const start = Date.now();
-  const { results, source } = await discoverResults(query, maxResults);
+  const { results, source } = await discoverResults(query, maxResults, locale);
 
   const withContent = await Promise.all(
     results.map(async (result) => {

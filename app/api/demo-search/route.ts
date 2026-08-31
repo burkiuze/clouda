@@ -35,6 +35,7 @@ async function runDemoSearch(req: NextRequest, query: string | undefined) {
       content: r.content.slice(0, 400),
     })),
     took_ms: result.tookMs,
+    source: result.source,
   });
 }
 
