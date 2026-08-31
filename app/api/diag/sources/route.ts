@@ -159,7 +159,9 @@ const probes: Probe[] = [
         `http://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(q)}&max_results=5`
       );
       const titles: string[] = [];
-      $("entry > title").each((_, el) => titles.push($(el).text().trim()));
+      $("entry > title").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
       return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
@@ -168,7 +170,9 @@ const probes: Probe[] = [
     run: async (q) => {
       const $ = await html(`https://www.mojeek.com/search?q=${encodeURIComponent(q)}`);
       const titles: string[] = [];
-      $("a.title, .results-standard li h2 a").each((_, el) => titles.push($(el).text().trim()));
+      $("a.title, .results-standard li h2 a").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
       return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
@@ -179,7 +183,9 @@ const probes: Probe[] = [
         `https://lobste.rs/search?q=${encodeURIComponent(q)}&what=stories&order=relevance`
       );
       const titles: string[] = [];
-      $(".story .u-url").each((_, el) => titles.push($(el).text().trim()));
+      $(".story .u-url").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
       return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
@@ -195,7 +201,9 @@ const probes: Probe[] = [
       });
       const $ = cheerio.load(res.body);
       const titles: string[] = [];
-      $(".result__a").each((_, el) => titles.push($(el).text().trim()));
+      $(".result__a").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
       return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
