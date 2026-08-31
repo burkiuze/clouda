@@ -269,30 +269,183 @@ const wikipedia: Discovery = async (query, maxResults, locale) => {
 // sources. DuckDuckGo stays in the chain because it works from hosts outside
 // the cloud IP ranges it blocks; Wikipedia and Google News are the last resort
 // so an unkeyed deployment still answers encyclopaedic and news queries.
-const sources: { name: string; discover: Discovery }[] = [
+/** Hacker News, via the Algolia index that backs its own search box. */
+const hackerNews: Discovery = async (query, maxResults) => {
+  const body = await getText(
+    `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&hitsPerPage=${maxResults}`
+  );
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as {
+      hits?: { title?: string; url?: string; objectID?: string; story_text?: string }[];
+    };
+    return (data.hits ?? [])
+      .filter((h) => h.title)
+      .slice(0, maxResults)
+      .map((h) => ({
+        title: h.title as string,
+        url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+        snippet: (h.story_text ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
+        content: "",
+      }));
+  } catch {
+    return [];
+  }
+};
+
+/** Repository search, for the library- and tool-shaped queries agents ask. */
+const github: Discovery = async (query, maxResults) => {
+  const token = process.env.GITHUB_TOKEN;
+  const body = await getText(
+    `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&per_page=${maxResults}`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }
+  );
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as {
+      items?: { full_name?: string; html_url?: string; description?: string }[];
+    };
+    return (data.items ?? [])
+      .filter((r) => r.full_name && r.html_url)
+      .slice(0, maxResults)
+      .map((r) => ({
+        title: r.full_name as string,
+        url: r.html_url as string,
+        snippet: r.description ?? "",
+        content: "",
+      }));
+  } catch {
+    return [];
+  }
+};
+
+/** Stack Overflow answers, the other half of most developer questions. */
+const stackExchange: Discovery = async (query, maxResults) => {
+  const body = await getText(
+    `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(
+      query
+    )}&site=stackoverflow&pagesize=${maxResults}`
+  );
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as { items?: { title?: string; link?: string }[] };
+    return (data.items ?? [])
+      .filter((i) => i.title && i.link)
+      .slice(0, maxResults)
+      .map((i) => ({ title: i.title as string, url: i.link as string, snippet: "", content: "" }));
+  } catch {
+    return [];
+  }
+};
+
+/** Peer-reviewed literature, for research-shaped queries. */
+const crossref: Discovery = async (query, maxResults) => {
+  const body = await getText(
+    `https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${maxResults}&select=title,URL,abstract`,
+    { headers: { "User-Agent": "Clouda/0.1 (mailto:hello@clouda.dev)" } }
+  );
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as {
+      message?: { items?: { title?: string[]; URL?: string; abstract?: string }[] };
+    };
+    return (data.message?.items ?? [])
+      .filter((w) => w.title?.[0] && w.URL)
+      .slice(0, maxResults)
+      .map((w) => ({
+        title: (w.title as string[])[0],
+        url: w.URL as string,
+        snippet: (w.abstract ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
+        content: "",
+      }));
+  } catch {
+    return [];
+  }
+};
+
+/** Providers that need a key, tried in order; the first to answer wins. */
+const keyedSources: { name: string; discover: Discovery }[] = [
   { name: "tavily", discover: tavily },
   { name: "brave", discover: brave },
   { name: "serper", discover: serper },
+];
+
+/** General-web scrapers: usable off cloud hosts, blocked on most of them. */
+const scrapedSources: { name: string; discover: Discovery }[] = [
   { name: "ddg-html", discover: duckDuckGoHtml },
   { name: "ddg-lite", discover: duckDuckGoLite },
+];
+
+/**
+ * Public APIs that answer from anywhere, no key required. None of them covers
+ * the whole web, so they are queried together and merged rather than tried in
+ * turn — between them they cover the encyclopaedic, developer, academic, and
+ * news queries agents actually ask.
+ */
+const openSources: { name: string; discover: Discovery }[] = [
   { name: "wikipedia", discover: wikipedia },
-  { name: "google-news-rss", discover: googleNewsRss },
+  { name: "stackoverflow", discover: stackExchange },
+  { name: "github", discover: github },
+  { name: "hackernews", discover: hackerNews },
+  { name: "crossref", discover: crossref },
+  { name: "google-news", discover: googleNewsRss },
 ];
 
 export const hasSearchProviderKey = Boolean(
   process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.SERPER_API_KEY
 );
 
+/** Interleaves each source's results so no single source crowds out the rest. */
+function mergeRoundRobin(lists: SearchResult[][], limit: number): SearchResult[] {
+  const merged: SearchResult[] = [];
+  const seen = new Set<string>();
+  const depth = Math.max(...lists.map((l) => l.length), 0);
+
+  for (let rank = 0; rank < depth && merged.length < limit; rank++) {
+    for (const list of lists) {
+      if (merged.length >= limit) break;
+      const item = list[rank];
+      if (!item) continue;
+      const key = item.url.replace(/\/+$/, "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+  }
+  return merged;
+}
+
 async function discoverResults(
   query: string,
   maxResults: number,
   locale: string
 ): Promise<{ results: SearchResult[]; source: string }> {
-  for (const source of sources) {
+  for (const source of [...keyedSources, ...scrapedSources]) {
     const results = filterUnsafe(await source.discover(query, maxResults, locale));
     if (results.length > 0) return { results, source: source.name };
   }
-  return { results: [], source: "none" };
+
+  const settled = await Promise.all(
+    openSources.map(async (source) => ({
+      name: source.name,
+      results: filterUnsafe(await source.discover(query, maxResults, locale)),
+    }))
+  );
+  const answered = settled.filter((s) => s.results.length > 0);
+  if (answered.length === 0) return { results: [], source: "none" };
+
+  return {
+    results: mergeRoundRobin(
+      answered.map((s) => s.results),
+      maxResults
+    ),
+    source: answered.map((s) => s.name).join("+"),
+  };
 }
 
 function extractReadableText($: cheerio.CheerioAPI): string {
