@@ -4,23 +4,35 @@ import { CloudaError } from "@/lib/core/errors";
 import { RawResult } from "@/lib/search/types";
 
 /**
- * Discovery providers.
+ * Discovery providers — all of them open, none of them keyed.
  *
- * Two classes exist. Keyed providers (Tavily, Brave, Serper) are the
- * dependable path and are tried first when their key is configured. Open
- * providers need no key but each covers only a slice of the web, so they are
- * queried together and merged rather than one at a time — measured from cloud
- * IP ranges, the general-web scrapers are blocked outright, which is why they
- * sit at the end of the chain rather than the front.
+ * Which sources are listed here was decided by measurement from the
+ * deployment's own egress, not by reputation. From a datacenter range the
+ * mainstream scrapers are simply gone: DuckDuckGo's HTML endpoint returns the
+ * bot-check page, and Mojeek, Reddit, Lobsters and searchmysite all answer 403.
+ * They are not listed, because a provider that never answers still costs every
+ * query a timeout.
+ *
+ * Marginalia is the general-web index, and the only one here that indexes the
+ * open web broadly rather than one vertical. Its public API is published under
+ * CC-BY-NC-SA 4.0 — attribution, non-commercial. That licence is a constraint
+ * on this product, not a detail: see README before charging for traffic that
+ * depends on it.
+ *
+ * The rest are verticals. They are asked in parallel and fused by rank, so a
+ * question gets the union of an encyclopaedia, a programming Q&A site, a code
+ * host, a news index and the open web rather than whichever one answers first.
  */
 
 export interface Provider {
   name: string;
-  /** "keyed" providers are tried alone; "open" providers are merged. */
-  kind: "keyed" | "open";
-  /** False when the provider's credentials are absent. */
   available(): boolean;
-  search(query: string, limit: number, locale: string, freshnessHours?: number | null): Promise<RawResult[]>;
+  search(
+    query: string,
+    limit: number,
+    locale: string,
+    freshnessHours?: number | null
+  ): Promise<RawResult[]>;
 }
 
 const PROVIDER_TIMEOUT = 7000;
@@ -35,186 +47,41 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
   }
 }
 
-/* ------------------------------------------------------------------ keyed */
-
-const tavily: Provider = {
-  name: "tavily",
-  kind: "keyed",
-  available: () => Boolean(process.env.TAVILY_API_KEY),
-  async search(query, limit, _locale, freshnessHours) {
-    const key = process.env.TAVILY_API_KEY;
-    if (!key) return [];
-
-    // Tavily expresses recency in whole days.
-    const days = freshnessHours != null ? Math.max(1, Math.ceil(freshnessHours / 24)) : undefined;
-
-    const data = await getJson<{
-      results?: { title?: string; url?: string; content?: string; published_date?: string }[];
-    }>("https://api.tavily.com/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        query,
-        max_results: limit,
-        search_depth: "basic",
-        include_answer: false,
-        ...(days ? { days, topic: "news" } : {}),
-      }),
-    });
-
-    return (data?.results ?? [])
-      .filter((r) => r.title && r.url)
-      .slice(0, limit)
-      .map((r) => ({
-        title: r.title as string,
-        url: r.url as string,
-        snippet: r.content ?? "",
-        publishedAt: r.published_date ?? null,
-      }));
-  },
-};
-
-const brave: Provider = {
-  name: "brave",
-  kind: "keyed",
-  available: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
-  async search(query, limit, locale, freshnessHours) {
-    const key = process.env.BRAVE_SEARCH_API_KEY;
-    if (!key) return [];
-
-    const [lang, region] = locale.split("-");
-    // Brave takes a coarse recency bucket rather than an exact window.
-    const freshness =
-      freshnessHours == null
-        ? ""
-        : freshnessHours <= 24
-          ? "&freshness=pd"
-          : freshnessHours <= 24 * 7
-            ? "&freshness=pw"
-            : freshnessHours <= 24 * 31
-              ? "&freshness=pm"
-              : "&freshness=py";
-
-    const data = await getJson<{
-      web?: { results?: { title?: string; url?: string; description?: string; age?: string }[] };
-    }>(
-      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}` +
-        `&count=${limit}&safesearch=strict&search_lang=${lang}${region ? `&country=${region}` : ""}${freshness}`,
-      { headers: { Accept: "application/json", "X-Subscription-Token": key } }
-    );
-
-    return (data?.web?.results ?? [])
-      .filter((r) => r.title && r.url)
-      .slice(0, limit)
-      .map((r) => ({
-        title: r.title as string,
-        url: r.url as string,
-        snippet: r.description ?? "",
-        publishedAt: r.age ?? null,
-      }));
-  },
-};
-
-const serper: Provider = {
-  name: "serper",
-  kind: "keyed",
-  available: () => Boolean(process.env.SERPER_API_KEY),
-  async search(query, limit, locale, freshnessHours) {
-    const key = process.env.SERPER_API_KEY;
-    if (!key) return [];
-
-    const [lang, region] = locale.split("-");
-    const tbs =
-      freshnessHours == null
-        ? undefined
-        : freshnessHours <= 1
-          ? "qdr:h"
-          : freshnessHours <= 24
-            ? "qdr:d"
-            : freshnessHours <= 24 * 7
-              ? "qdr:w"
-              : freshnessHours <= 24 * 31
-                ? "qdr:m"
-                : "qdr:y";
-
-    const data = await getJson<{
-      organic?: { title?: string; link?: string; snippet?: string; date?: string }[];
-    }>("https://google.serper.dev/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-KEY": key },
-      body: JSON.stringify({
-        q: query,
-        num: limit,
-        hl: lang,
-        gl: region?.toLowerCase(),
-        ...(tbs ? { tbs } : {}),
-      }),
-    });
-
-    return (data?.organic ?? [])
-      .filter((r) => r.title && r.link)
-      .slice(0, limit)
-      .map((r) => ({
-        title: r.title as string,
-        url: r.link as string,
-        snippet: r.snippet ?? "",
-        publishedAt: r.date ?? null,
-      }));
-  },
-};
-
-/* ------------------------------------------------------------------- open */
-
-function resolveDuckUrl(href: string): string {
-  try {
-    const url = new URL(href, "https://duckduckgo.com");
-    const uddg = url.searchParams.get("uddg");
-    return uddg ? decodeURIComponent(uddg) : url.toString();
-  } catch {
-    return href;
-  }
+/** Strips the highlight markup search APIs wrap matched terms in. */
+function plain(text: string | undefined): string {
+  return (text ?? "").replace(/<[^>]+>/g, "").replace(/&hellip;/g, "…").replace(/\s+/g, " ").trim();
 }
 
-const duckduckgo: Provider = {
-  name: "duckduckgo",
-  kind: "open",
+/* ------------------------------------------------------- general open web */
+
+const marginalia: Provider = {
+  name: "marginalia",
   available: () => true,
   async search(query, limit) {
-    try {
-      const res = await safeFetch("https://html.duckduckgo.com/html/", {
-        method: "POST",
-        trusted: true,
-        timeoutMs: PROVIDER_TIMEOUT,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ q: query }).toString(),
-      });
+    const data = await getJson<{
+      results?: { url?: string; title?: string; description?: string; quality?: number }[];
+    }>(`https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`);
 
-      const $ = cheerio.load(res.body);
-      const out: RawResult[] = [];
-      $(".result").each((_, el) => {
-        if (out.length >= limit) return;
-        const link = $(el).find(".result__a").first();
-        const title = link.text().trim();
-        const href = link.attr("href");
-        if (!title || !href) return;
-        const url = resolveDuckUrl(href);
-        if (!/^https?:\/\//.test(url)) return;
-        out.push({ title, url, snippet: $(el).find(".result__snippet").text().trim() });
-      });
-      return out;
-    } catch {
-      // Datacenter ranges usually get the bot-check page here.
-      return [];
-    }
+    return (data?.results ?? [])
+      .filter((r) => r.url && r.title)
+      .slice(0, limit)
+      .map((r) => ({
+        title: r.title as string,
+        url: r.url as string,
+        snippet: plain(r.description),
+        publishedAt: null,
+      }));
   },
 };
+
+/* ------------------------------------------------------------- verticals */
 
 const wikipedia: Provider = {
   name: "wikipedia",
-  kind: "open",
   available: () => true,
   async search(query, limit, locale) {
     const primary = locale.split("-")[0] || "en";
+    // Ask the caller's language first, then English, which is far deeper.
     const langs = primary === "en" ? ["en"] : [primary, "en"];
     const out: RawResult[] = [];
 
@@ -234,7 +101,7 @@ const wikipedia: Provider = {
         out.push({
           title: hit.title,
           url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, "_"))}`,
-          snippet: hit.snippet.replace(/<[^>]+>/g, "").trim(),
+          snippet: plain(hit.snippet),
           publishedAt: hit.timestamp ?? null,
         });
       }
@@ -243,36 +110,66 @@ const wikipedia: Provider = {
   },
 };
 
-const stackoverflow: Provider = {
-  name: "stackoverflow",
-  kind: "open",
+/**
+ * Stack Exchange, across the network rather than Stack Overflow alone, so an
+ * administration or maths question is not answered from a programming site.
+ *
+ * Uses /search/excerpts rather than /search/advanced: the advanced endpoint
+ * returns no body at all, which is why these results used to arrive with an
+ * empty snippet and score poorly for relevance. Excerpts carry no link field,
+ * so the URL is built from the question id.
+ */
+const SE_SITES = ["stackoverflow", "superuser", "serverfault", "unix", "askubuntu", "dba"];
+
+const stackexchange: Provider = {
+  name: "stackexchange",
   available: () => true,
   async search(query, limit) {
-    const data = await getJson<{
-      items?: { title?: string; link?: string; creation_date?: number; last_activity_date?: number }[];
-    }>(
-      `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(
-        query
-      )}&site=stackoverflow&pagesize=${limit}`
+    const perSite = Math.max(3, Math.ceil(limit / 2));
+
+    const lists = await Promise.all(
+      SE_SITES.slice(0, 3).map(async (site) => {
+        const data = await getJson<{
+          items?: {
+            question_id?: number;
+            title?: string;
+            excerpt?: string;
+            last_activity_date?: number;
+          }[];
+        }>(
+          `https://api.stackexchange.com/2.3/search/excerpts?order=desc&sort=relevance` +
+            `&q=${encodeURIComponent(query)}&site=${site}&pagesize=${perSite}`
+        );
+
+        return (data?.items ?? [])
+          .filter((i) => i.title && i.question_id)
+          .map<RawResult>((i) => ({
+            title: i.title as string,
+            url: `https://${site === "stackoverflow" ? "stackoverflow.com" : `${site}.stackexchange.com`}/q/${i.question_id}`,
+            snippet: plain(i.excerpt),
+            publishedAt: i.last_activity_date
+              ? new Date(i.last_activity_date * 1000).toISOString()
+              : null,
+          }));
+      })
     );
 
-    return (data?.items ?? [])
-      .filter((i) => i.title && i.link)
-      .slice(0, limit)
-      .map((i) => ({
-        title: i.title as string,
-        url: i.link as string,
-        snippet: "",
-        publishedAt: i.last_activity_date
-          ? new Date(i.last_activity_date * 1000).toISOString()
-          : null,
-      }));
+    // Interleave so one site cannot fill the whole allowance.
+    const out: RawResult[] = [];
+    for (let rank = 0; out.length < limit; rank++) {
+      const before = out.length;
+      for (const list of lists) {
+        if (out.length >= limit) break;
+        if (list[rank]) out.push(list[rank]);
+      }
+      if (out.length === before) break;
+    }
+    return out;
   },
 };
 
 const github: Provider = {
   name: "github",
-  kind: "open",
   available: () => true,
   async search(query, limit) {
     const token = process.env.GITHUB_TOKEN;
@@ -302,14 +199,17 @@ const github: Provider = {
 
 const hackernews: Provider = {
   name: "hackernews",
-  kind: "open",
   available: () => true,
   async search(query, limit) {
     const data = await getJson<{
-      hits?: { title?: string; url?: string; objectID?: string; created_at?: string; story_text?: string }[];
-    }>(
-      `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&hitsPerPage=${limit}`
-    );
+      hits?: {
+        title?: string;
+        url?: string;
+        objectID?: string;
+        created_at?: string;
+        story_text?: string;
+      }[];
+    }>(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&hitsPerPage=${limit}`);
 
     return (data?.hits ?? [])
       .filter((h) => h.title)
@@ -317,39 +217,82 @@ const hackernews: Provider = {
       .map((h) => ({
         title: h.title as string,
         url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
-        snippet: (h.story_text ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
+        snippet: plain(h.story_text).slice(0, 300),
         publishedAt: h.created_at ?? null,
       }));
   },
 };
 
-const crossref: Provider = {
-  name: "crossref",
-  kind: "open",
+/**
+ * OpenAlex replaces Crossref: same coverage, but it returns an abstract, and a
+ * result with no snippet cannot be scored for relevance. Scoped to academic
+ * questions — measured against a general query it matched on single stray
+ * words and returned papers about unrelated fields.
+ */
+const openalex: Provider = {
+  name: "openalex",
   available: () => true,
   async search(query, limit) {
     const data = await getJson<{
-      message?: { items?: { title?: string[]; URL?: string; abstract?: string; created?: { "date-time"?: string } }[] };
+      results?: {
+        title?: string;
+        doi?: string;
+        id?: string;
+        publication_date?: string;
+        abstract_inverted_index?: Record<string, number[]>;
+      }[];
     }>(
-      `https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${limit}&select=title,URL,abstract,created`,
-      { headers: { "User-Agent": "Clouda/1.0 (mailto:hello@clouda.dev)" } }
+      `https://api.openalex.org/works?search=${encodeURIComponent(query)}` +
+        `&per-page=${limit}&mailto=hello@clouda.dev`
     );
 
-    return (data?.message?.items ?? [])
-      .filter((w) => w.title?.[0] && w.URL)
+    return (data?.results ?? [])
+      .filter((w) => w.title && (w.doi || w.id))
       .slice(0, limit)
       .map((w) => ({
-        title: (w.title as string[])[0],
-        url: w.URL as string,
-        snippet: (w.abstract ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
-        publishedAt: w.created?.["date-time"] ?? null,
+        title: w.title as string,
+        url: (w.doi ? `https://doi.org/${w.doi.replace(/^https?:\/\/doi\.org\//, "")}` : w.id) as string,
+        snippet: invertedAbstract(w.abstract_inverted_index).slice(0, 300),
+        publishedAt: w.publication_date ?? null,
+      }));
+  },
+};
+
+/** OpenAlex stores abstracts as a word→positions map; rebuild the sentence. */
+function invertedAbstract(index: Record<string, number[]> | undefined): string {
+  if (!index) return "";
+  const words: string[] = [];
+  for (const [word, positions] of Object.entries(index)) {
+    for (const p of positions) words[p] = word;
+  }
+  return words.filter(Boolean).join(" ");
+}
+
+const npm: Provider = {
+  name: "npm",
+  available: () => true,
+  async search(query, limit) {
+    const data = await getJson<{
+      objects?: {
+        package?: { name?: string; description?: string; links?: { npm?: string }; date?: string };
+      }[];
+    }>(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${limit}`);
+
+    return (data?.objects ?? [])
+      .map((o) => o.package)
+      .filter((p): p is NonNullable<typeof p> => Boolean(p?.name))
+      .slice(0, limit)
+      .map((p) => ({
+        title: p.name as string,
+        url: p.links?.npm ?? `https://www.npmjs.com/package/${p.name}`,
+        snippet: p.description ?? "",
+        publishedAt: p.date ?? null,
       }));
   },
 };
 
 const googleNews: Provider = {
   name: "google-news",
-  kind: "open",
   available: () => true,
   async search(query, limit, locale) {
     const [lang, region = lang.toUpperCase()] = locale.split("-");
@@ -369,7 +312,7 @@ const googleNews: Provider = {
         out.push({
           title,
           url,
-          snippet: $(el).find("description").first().text().replace(/<[^>]+>/g, "").trim(),
+          snippet: plain($(el).find("description").first().text()),
           publishedAt: $(el).find("pubDate").first().text().trim() || null,
         });
       });
@@ -380,43 +323,36 @@ const googleNews: Provider = {
   },
 };
 
-export const KEYED_PROVIDERS: Provider[] = [tavily, brave, serper];
 export const OPEN_PROVIDERS: Provider[] = [
-  duckduckgo,
+  marginalia,
   wikipedia,
-  stackoverflow,
+  stackexchange,
   github,
   hackernews,
-  crossref,
   googleNews,
 ];
 
-export const ALL_PROVIDERS = [...KEYED_PROVIDERS, ...OPEN_PROVIDERS];
-
-export function configuredKeyedProvider(): Provider | null {
-  return KEYED_PROVIDERS.find((p) => p.available()) ?? null;
-}
-
-export function hasKeyedProvider(): boolean {
-  return configuredKeyedProvider() !== null;
-}
+export const ALL_PROVIDERS = [...OPEN_PROVIDERS, openalex, npm];
 
 /**
- * Open providers each cover one domain of the web, so a general question is
- * answered by asking several and interleaving what comes back. Intent narrows
- * the set: a news question should not be answered by Crossref.
+ * Which sources suit a question.
+ *
+ * Marginalia and Wikipedia are in every set: one covers the open web, the
+ * other covers definitions, and between them a question always has somewhere
+ * to land. The verticals are added only where they help — OpenAlex answering a
+ * news question returns papers that merely share a word with it.
  */
 export function openProvidersForIntent(intent: string): Provider[] {
   switch (intent) {
     case "news":
     case "finance":
-      return [duckduckgo, googleNews, wikipedia];
+      return [marginalia, googleNews, wikipedia];
     case "academic":
-      return [duckduckgo, crossref, wikipedia];
+      return [marginalia, openalex, wikipedia];
     case "technical":
-      return [duckduckgo, stackoverflow, github, hackernews];
+      return [marginalia, stackexchange, github, hackernews, npm];
     case "product":
-      return [duckduckgo, googleNews, hackernews];
+      return [marginalia, googleNews, hackernews, wikipedia];
     default:
       return OPEN_PROVIDERS;
   }

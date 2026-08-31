@@ -4,12 +4,7 @@ import { filterUnsafe } from "@/lib/search/safety";
 import { fetchAndExtract } from "@/lib/search/extract";
 import { planQuery } from "@/lib/search/query";
 import { scoreResult } from "@/lib/search/scoring";
-import {
-  configuredKeyedProvider,
-  KEYED_PROVIDERS,
-  openProvidersForIntent,
-  Provider,
-} from "@/lib/search/providers";
+import { openProvidersForIntent, Provider } from "@/lib/search/providers";
 import type {
   QueryPlan,
   RawResult,
@@ -24,10 +19,13 @@ export const DEFAULT_LOCALE = "tr-TR";
  * The search pipeline, in four stages:
  *
  *   plan       classify intent, clean the query, decide on freshness
- *   discover   keyed provider first, then the open providers merged together;
- *              every failure is recorded rather than swallowed
- *   enrich     fetch each result and extract readable text plus real dates
- *   score      attach relevance/credibility/freshness/overall and re-rank
+ *   discover   ask every source that suits the intent at once and fuse their
+ *              rankings; each failure is recorded rather than swallowed
+ *   enrich     fetch each candidate and extract readable text plus real dates
+ *   score      attach relevance/credibility/freshness/overall, re-rank, and
+ *              spread the head across hosts
+ *
+ * There is no paid provider and no key: discovery runs on open indexes only.
  *
  * Results are cached by normalised query, with the freshness window part of
  * the cache contract so a "last hour" request never gets a day-old row.
@@ -156,15 +154,8 @@ async function discover(
 ): Promise<DiscoveryOutcome> {
   const degraded: { provider: string; reason: string }[] = [];
 
-  // A configured provider is the dependable path; try each in turn.
-  for (const provider of KEYED_PROVIDERS) {
-    if (!provider.available()) continue;
-    const results = await runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded);
-    const safe = filterUnsafe(results);
-    if (safe.length > 0) return { results: safe, provider: provider.name, degraded };
-  }
-
-  // Otherwise fan out across the open providers that suit this intent.
+  // Every source is asked at once and the answers are fused; there is no
+  // single "best" index to try first.
   const open = openProvidersForIntent(plan.intent);
   const settled = await Promise.all(
     open.map(async (provider) => ({
@@ -222,6 +213,40 @@ async function enrich(
   return out;
 }
 
+/**
+ * Takes the top `limit` results while holding any single host to two entries,
+ * so a site that happens to rank well does not fill the whole page. Anything
+ * held back is appended if the quota is not otherwise filled — fewer results
+ * would be a worse answer than a slightly repetitive one.
+ */
+const MAX_PER_HOST = 2;
+
+function diversifyByHost(results: SearchResult[], limit: number): SearchResult[] {
+  const perHost = new Map<string, number>();
+  const kept: SearchResult[] = [];
+  const held: SearchResult[] = [];
+
+  for (const result of results) {
+    let host = "";
+    try {
+      host = new URL(result.url).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep an unparseable URL in the main flow */
+    }
+
+    const seen = perHost.get(host) ?? 0;
+    if (host && seen >= MAX_PER_HOST) {
+      held.push(result);
+      continue;
+    }
+    perHost.set(host, seen + 1);
+    kept.push(result);
+    if (kept.length >= limit) break;
+  }
+
+  return kept.length >= limit ? kept : [...kept, ...held].slice(0, limit);
+}
+
 /** Counts how many distinct hosts back the same headline-ish claim. */
 function corroborationByHost(results: RawResult[]): Map<string, number> {
   const hosts = new Map<string, number>();
@@ -271,7 +296,12 @@ export async function searchWeb(
     provider,
     degraded,
   } = await discover(plan, candidateCount, locale, freshnessHours);
-  const raw = candidates.slice(0, maxResults);
+
+  // Score the whole candidate pool, not the first maxResults of it. Cutting
+  // here was self-defeating: the extra candidates were fetched precisely so
+  // that ranking could choose among them, and truncating first meant a better
+  // result sitting at position 11 could never displace a worse one at 3.
+  const raw = candidates;
 
   if (raw.length === 0) {
     return {
@@ -326,6 +356,7 @@ export async function searchWeb(
   }
 
   results.sort((a, b) => b.scores.overall - a.scores.overall);
+  results = diversifyByHost(results, maxResults);
 
   const response: SearchResponse = {
     query: trimmed,
@@ -344,4 +375,3 @@ export async function searchWeb(
   return response;
 }
 
-export const hasSearchProviderKey = () => configuredKeyedProvider() !== null;

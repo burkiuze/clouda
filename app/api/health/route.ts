@@ -50,12 +50,9 @@ export async function GET() {
       detail: "Yalnızca Google ile giriş için gerekir.",
     },
     searchProvider: {
-      ok: Boolean(
-        process.env.TAVILY_API_KEY ??
-          process.env.BRAVE_SEARCH_API_KEY ??
-          process.env.SERPER_API_KEY
-      ),
-      detail: "İsteğe bağlı. Anahtar yoksa yalnızca açık kaynaklar kullanılır.",
+      // Search runs entirely on open sources; there is no key to configure.
+      ok: true,
+      detail: "Açık kaynaklar üzerinden çalışıyor, anahtar gerekmiyor.",
     },
   };
 

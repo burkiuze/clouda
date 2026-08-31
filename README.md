@@ -9,9 +9,9 @@ tarzı bir ürün sitesi + Google ile giriş + her yeni hesaba otomatik 2000
 - Next.js 15 (App Router) + TypeScript + Tailwind CSS
 - Auth.js (next-auth v5) — Google OAuth + Prisma adapter
 - Prisma + PostgreSQL
-- Kendi arama motoru: DuckDuckGo HTML sonuçları + sunucu taraflı sayfa
-  içeriği çıkarımı (`lib/search/engine.ts`) — üçüncü parti ücretli API key
-  gerekmez.
+- Kendi arama motoru: açık indekslerin paralel sorgulanması + RRF ile sıralama
+  birleştirme + sunucu taraflı sayfa içeriği çıkarımı (`lib/search/engine.ts`)
+  — üçüncü parti ücretli API anahtarı gerekmez.
 
 ## Yerel geliştirme
 
@@ -58,18 +58,25 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
    ```
    - `NEXTAUTH_SECRET` (veya `AUTH_SECRET`)
 
-4. **Arama sağlayıcı anahtarı (önerilir)** — genel web araması için bir
-   anahtar ekle (birini seç):
-   - `TAVILY_API_KEY` — https://tavily.com
-   - `BRAVE_SEARCH_API_KEY` — https://brave.com/search/api
-   - `SERPER_API_KEY` — https://serper.dev
+4. **Arama sağlayıcı anahtarı gerekmiyor.** Arama tamamen açık indeksler
+   üzerinde çalışır; ödemeli bir sağlayıcıya bağımlılık yoktur.
 
-   Neden gerekli: bulut sunucu IP'lerinden ücretsiz arama kaynaklarının
-   tamamı engelleniyor (DuckDuckGo ve Mojeek bot kontrol sayfası, Brave HTML
-   429, Bing'in RSS görünümü ise sorguyla alakasız sonuçlar döndürüyor).
-   Anahtar olmadan da site ve API çalışır, ama sonuçlar yalnızca açık
-   kaynaklardan (Wikipedia, Google News) gelir. Anahtar eklendiği anda motor
-   onu ilk sırada kullanır, kod değişikliği gerekmez.
+   Hangi kaynakların kullanıldığı tahminle değil ölçümle seçildi: deploy'un
+   kendi çıkış IP'lerinden yapılan testte DuckDuckGo'nun HTML ucu bot kontrol
+   sayfası, Mojeek / Reddit / Lobsters / searchmysite ise 403 döndürüyor, bu
+   yüzden listede yoklar — hiç cevap vermeyen bir sağlayıcı her sorguya sadece
+   zaman aşımı ekler.
+
+   Açık web'i **Marginalia** karşılıyor; geri kalanı dikey kaynaklar
+   (Wikipedia, Stack Exchange, GitHub, Hacker News, Google News, akademik
+   sorularda OpenAlex, paket sorularında npm). Hepsi aynı anda sorgulanır ve
+   sıralamaları RRF ile birleştirilir.
+
+   > **Lisans uyarısı.** Marginalia'nın herkese açık API'si **CC-BY-NC-SA 4.0**
+   > ile yayımlanıyor — atıf zorunlu ve **ticari kullanıma kapalı**. Clouda
+   > ücretli bir ürün olarak sunulacaksa bu kaynak için Marginalia ile ayrı bir
+   > izin/lisans konuşulması gerekir. Ticari kullanım netleşene kadar açık web
+   > katmanını ücretsiz kademeyle sınırlamak ya da devre dışı bırakmak gerekir.
 
 5. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
 
@@ -103,11 +110,14 @@ başlığıyla, istek başına 10 kredi düşer. Detaylar `/docs` sayfasında.
 
 ## Notlar / sonraki adımlar
 
-- Arama motoru `lib/search/engine.ts` içinde sıralı kaynak zinciri olarak
-  çalışır: anahtarlı sağlayıcılar (Tavily / Brave / Serper — hangisinin
-  anahtarı varsa) → DuckDuckGo (bulut dışı sunucularda çalışır) → Wikipedia →
-  Google News. Bir kaynak boş dönerse sıradakine geçer, hangisinin cevap
-  verdiği yanıttaki `source` alanında görünür.
+- Arama motoru `lib/search/engine.ts` içinde zincir değil, **paralel** çalışır:
+  niyete uyan bütün kaynaklar aynı anda sorgulanır, sıralamaları reciprocal
+  rank fusion ile birleştirilir. Birden fazla indeksin bağımsız olarak öne
+  çıkardığı sayfa yukarı taşınır — bir toplayıcının elindeki en güçlü sinyal
+  budur. Hangi kaynakların cevap verdiği yanıttaki `source` alanında, cevap
+  vermeyenler ise `degraded_providers` içinde görünür.
+- Aynı ana bilgisayardan en fazla iki sonuç başa alınır, böylece tek bir site
+  ilk sayfayı doldurmaz.
 - Sonuç bulunduktan sonra her sayfa sunucu tarafında indirilip okunabilir
   metne dönüştürülür (`fetchPageContent`) — ürünün asıl katma değeri burası.
 - `lib/search/safety.ts` yetişkin içerik filtresi, sağlayıcının kendi
