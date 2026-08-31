@@ -35,13 +35,19 @@ export interface Provider {
   ): Promise<RawResult[]>;
 }
 
-// A source that has not answered in three seconds is holding up every other
-// source in the fan-out; its contribution is not worth the wait.
-const PROVIDER_TIMEOUT = 3000;
+/**
+ * In a parallel fan-out the slowest source sets the response time, so the
+ * budget is per source rather than shared. Marginalia gets the longest one: it
+ * is the only general-web index here, and a search without it falls back to
+ * verticals that cannot answer a general question. The rest are fast APIs
+ * where a slow reply means trouble, not depth.
+ */
+const PROVIDER_TIMEOUT = 2500;
+const MARGINALIA_TIMEOUT = 5000;
 
-async function getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+async function getJson<T>(url: string, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT): Promise<T | null> {
   try {
-    const res = await safeFetch(url, { ...init, trusted: true, timeoutMs: PROVIDER_TIMEOUT });
+    const res = await safeFetch(url, { ...init, trusted: true, timeoutMs });
     if (res.status >= 400) return null;
     return JSON.parse(res.body) as T;
   } catch {
@@ -62,7 +68,11 @@ const marginalia: Provider = {
   async search(query, limit) {
     const data = await getJson<{
       results?: { url?: string; title?: string; description?: string; quality?: number }[];
-    }>(`https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`);
+    }>(
+      `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
+      undefined,
+      MARGINALIA_TIMEOUT
+    );
 
     return (data?.results ?? [])
       .filter((r) => r.url && r.title)
@@ -83,32 +93,32 @@ const wikipedia: Provider = {
   available: () => true,
   async search(query, limit, locale) {
     const primary = locale.split("-")[0] || "en";
-    // Ask the caller's language first, then English, which is far deeper.
+    // Both editions are asked at once. Asking them in sequence doubled this
+    // provider's worst case, and it was the slowest in the fan-out.
     const langs = primary === "en" ? ["en"] : [primary, "en"];
-    const out: RawResult[] = [];
 
-    for (const lang of langs) {
-      if (out.length >= limit) break;
-      const data = await getJson<{
-        query?: { search?: { title: string; snippet: string; timestamp?: string }[] };
-      }>(
-        `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-          query
-        )}&format=json&srlimit=${limit}`,
-        { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
-      );
+    const lists = await Promise.all(
+      langs.map(async (lang) => {
+        const data = await getJson<{
+          query?: { search?: { title: string; snippet: string; timestamp?: string }[] };
+        }>(
+          `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+            query
+          )}&format=json&srlimit=${limit}`,
+          { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
+        );
 
-      for (const hit of data?.query?.search ?? []) {
-        if (out.length >= limit) break;
-        out.push({
+        return (data?.query?.search ?? []).map<RawResult>((hit) => ({
           title: hit.title,
           url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, "_"))}`,
           snippet: plain(hit.snippet),
           publishedAt: hit.timestamp ?? null,
-        });
-      }
-    }
-    return out;
+        }));
+      })
+    );
+
+    // The caller's own language leads; English fills the rest.
+    return [...lists.flat()].slice(0, limit);
   },
 };
 

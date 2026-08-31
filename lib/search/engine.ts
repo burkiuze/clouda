@@ -47,6 +47,13 @@ const MAX_ENRICH_CONCURRENCY = 12;
 const ENRICH_HEADROOM = 3;
 
 /**
+ * Wall-clock cut-off for content extraction, measured from the start of the
+ * request. Discovery has already spent part of the budget by the time this
+ * stage runs, so it is an absolute deadline rather than a per-stage timeout.
+ */
+const ENRICH_DEADLINE_MS = 3200;
+
+/**
  * Providers are asked for more than the caller wants. Deduplication, the
  * relevance gate and the freshness window all discard candidates, so a thin
  * request would otherwise return fewer results than asked for.
@@ -222,21 +229,46 @@ async function discover(
   };
 }
 
-/** Fetches page content for results, bounded so one slow host can't stall. */
+/**
+ * Fetches page content, bounded so one slow host can't stall the response.
+ *
+ * `deadline` is a wall-clock cut-off for the whole stage: whatever has not
+ * arrived by then falls back to the provider's snippet. A late page is worth
+ * less than a prompt answer, and without this the response time is decided by
+ * the slowest server in the result set.
+ */
 async function enrich(
   results: RawResult[],
-  options: SearchOptions
+  options: SearchOptions,
+  deadline: number
 ): Promise<{ raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[]> {
   const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
 
   for (let i = 0; i < results.length; i += MAX_ENRICH_CONCURRENCY) {
     const batch = results.slice(i, i + MAX_ENRICH_CONCURRENCY);
+    const remaining = deadline - Date.now();
+
+    if (remaining <= 0) {
+      out.push(
+        ...batch.map((raw) => ({
+          raw,
+          content: raw.snippet,
+          updatedAt: null,
+          publishedAt: raw.publishedAt ?? null,
+        }))
+      );
+      continue;
+    }
+
     const pages = await Promise.all(
       batch.map(async (raw) => {
         if (options.includeContent === false) {
           return { raw, content: "", updatedAt: null, publishedAt: raw.publishedAt ?? null };
         }
-        const page = await fetchAndExtract(raw.url, { policy: options.domainPolicy });
+        const page = await fetchAndExtract(raw.url, {
+          policy: options.domainPolicy,
+          timeoutMs: Math.min(3500, remaining),
+        });
         return {
           raw,
           content: page?.content ?? raw.snippet,
@@ -356,7 +388,8 @@ export async function searchWeb(
     };
   }
 
-  const enriched = await enrich(raw, options);
+  // Whatever has not been fetched by this point is served from its snippet.
+  const enriched = await enrich(raw, options, started + ENRICH_DEADLINE_MS);
   const hostCounts = corroborationByHost(raw);
 
   let results: SearchResult[] = enriched.map((item) => {
