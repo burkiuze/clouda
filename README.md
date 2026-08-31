@@ -49,7 +49,20 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
    ```
    - `NEXTAUTH_SECRET` (veya `AUTH_SECRET`)
 
-4. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
+4. **Arama sağlayıcı anahtarı (önerilir)** — genel web araması için bir
+   anahtar ekle (birini seç):
+   - `TAVILY_API_KEY` — https://tavily.com
+   - `BRAVE_SEARCH_API_KEY` — https://brave.com/search/api
+   - `SERPER_API_KEY` — https://serper.dev
+
+   Neden gerekli: bulut sunucu IP'lerinden ücretsiz arama kaynaklarının
+   tamamı engelleniyor (DuckDuckGo ve Mojeek bot kontrol sayfası, Brave HTML
+   429, Bing'in RSS görünümü ise sorguyla alakasız sonuçlar döndürüyor).
+   Anahtar olmadan da site ve API çalışır, ama sonuçlar yalnızca açık
+   kaynaklardan (Wikipedia, Google News) gelir. Anahtar eklendiği anda motor
+   onu ilk sırada kullanır, kod değişikliği gerekmez.
+
+5. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
 
 Hepsini ekledikten sonra Vercel'de **Redeploy** yap.
 
@@ -60,10 +73,14 @@ başlığıyla, istek başına 10 kredi düşer. Detaylar `/docs` sayfasında.
 
 ## Notlar / sonraki adımlar
 
-- Arama motoru MVP olarak DuckDuckGo'nun HTML sonuç sayfasını kullanıyor —
-  anahtar gerektirmez ama bulut IP'lerinden zaman zaman hız sınırına
-  takılabilir. `lib/search/engine.ts` içindeki `searchWeb` fonksiyonu tek
-  giriş noktası olduğu için ileride Tavily/Brave/Serper gibi ücretli bir
-  sağlayıcıya geçmek tek dosyalık bir değişiklik.
+- Arama motoru `lib/search/engine.ts` içinde sıralı kaynak zinciri olarak
+  çalışır: anahtarlı sağlayıcılar (Tavily / Brave / Serper — hangisinin
+  anahtarı varsa) → DuckDuckGo (bulut dışı sunucularda çalışır) → Wikipedia →
+  Google News. Bir kaynak boş dönerse sıradakine geçer, hangisinin cevap
+  verdiği yanıttaki `source` alanında görünür.
+- Sonuç bulunduktan sonra her sayfa sunucu tarafında indirilip okunabilir
+  metne dönüştürülür (`fetchPageContent`) — ürünün asıl katma değeri burası.
+- `lib/search/safety.ts` yetişkin içerik filtresi, sağlayıcının kendi
+  güvenli arama bayrağının arkasındaki ikinci katman.
 - Kredi/kullanıcı verisi olmadan (DB bağlanmadan) site ve ana sayfadaki canlı
   arama demosu sorunsuz çalışır; sadece giriş ve panel DB gerektirir.

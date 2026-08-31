@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { filterUnsafe } from "@/lib/search/safety";
 
 export interface SearchResult {
   title: string;
@@ -120,14 +121,85 @@ const duckDuckGoLite: Discovery = async (query, maxResults) => {
   return results;
 };
 
-/** Bing publishes an RSS view of its result page, which datacenter IPs can read. */
-const bingRss: Discovery = async (query, maxResults, locale) => {
-  const xml = await getText(
-    `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss&count=${
-      maxResults * 2
-    }&mkt=${encodeURIComponent(locale)}&setlang=${encodeURIComponent(locale.split("-")[0])}`
+/**
+ * Keyed providers. Every free scraping route is blocked from cloud IP ranges
+ * (DuckDuckGo and Mojeek serve bot checks, Brave rate-limits, Bing's RSS view
+ * answers with results unrelated to the query), so a provider key is what makes
+ * general web search dependable in production. Whichever key is configured is
+ * tried first; without one the engine falls back to the open sources below.
+ */
+const tavily: Discovery = async (query, maxResults) => {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return [];
+  const body = await getText("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ query, max_results: maxResults, search_depth: "basic" }),
+  });
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as {
+      results?: { title?: string; url?: string; content?: string }[];
+    };
+    return (data.results ?? [])
+      .filter((r): r is { title: string; url: string; content?: string } =>
+        Boolean(r.title && r.url)
+      )
+      .slice(0, maxResults)
+      .map((r) => ({ title: r.title, url: r.url, snippet: r.content ?? "", content: "" }));
+  } catch {
+    return [];
+  }
+};
+
+const brave: Discovery = async (query, maxResults, locale) => {
+  const key = process.env.BRAVE_SEARCH_API_KEY;
+  if (!key) return [];
+  const [lang, region] = locale.split("-");
+  const body = await getText(
+    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}` +
+      `&safesearch=strict&search_lang=${lang}${region ? `&country=${region}` : ""}`,
+    { headers: { Accept: "application/json", "X-Subscription-Token": key } }
   );
-  return xml ? parseRss(xml, maxResults) : [];
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as {
+      web?: { results?: { title?: string; url?: string; description?: string }[] };
+    };
+    return (data.web?.results ?? [])
+      .filter((r): r is { title: string; url: string; description?: string } =>
+        Boolean(r.title && r.url)
+      )
+      .slice(0, maxResults)
+      .map((r) => ({ title: r.title, url: r.url, snippet: r.description ?? "", content: "" }));
+  } catch {
+    return [];
+  }
+};
+
+const serper: Discovery = async (query, maxResults, locale) => {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return [];
+  const [lang, region] = locale.split("-");
+  const body = await getText("https://google.serper.dev/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-KEY": key },
+    body: JSON.stringify({ q: query, num: maxResults, hl: lang, gl: region?.toLowerCase() }),
+  });
+  if (!body) return [];
+  try {
+    const data = JSON.parse(body) as {
+      organic?: { title?: string; link?: string; snippet?: string }[];
+    };
+    return (data.organic ?? [])
+      .filter((r): r is { title: string; link: string; snippet?: string } =>
+        Boolean(r.title && r.link)
+      )
+      .slice(0, maxResults)
+      .map((r) => ({ title: r.title, url: r.link, snippet: r.snippet ?? "", content: "" }));
+  } catch {
+    return [];
+  }
 };
 
 function parseRss(xml: string, maxResults: number): SearchResult[] {
@@ -193,16 +265,23 @@ const wikipedia: Discovery = async (query, maxResults, locale) => {
   return out;
 };
 
-// Ordered by result quality, and by which sources actually answer from cloud
-// IP ranges: DuckDuckGo serves its bot-check page to datacenter addresses, so
-// it sits behind Bing rather than in front of it.
+// Keyed providers first (they no-op when their key is absent), then the open
+// sources. DuckDuckGo stays in the chain because it works from hosts outside
+// the cloud IP ranges it blocks; Wikipedia and Google News are the last resort
+// so an unkeyed deployment still answers encyclopaedic and news queries.
 const sources: { name: string; discover: Discovery }[] = [
-  { name: "bing-rss", discover: bingRss },
+  { name: "tavily", discover: tavily },
+  { name: "brave", discover: brave },
+  { name: "serper", discover: serper },
   { name: "ddg-html", discover: duckDuckGoHtml },
   { name: "ddg-lite", discover: duckDuckGoLite },
   { name: "wikipedia", discover: wikipedia },
   { name: "google-news-rss", discover: googleNewsRss },
 ];
+
+export const hasSearchProviderKey = Boolean(
+  process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.SERPER_API_KEY
+);
 
 async function discoverResults(
   query: string,
@@ -210,7 +289,7 @@ async function discoverResults(
   locale: string
 ): Promise<{ results: SearchResult[]; source: string }> {
   for (const source of sources) {
-    const results = await source.discover(query, maxResults, locale);
+    const results = filterUnsafe(await source.discover(query, maxResults, locale));
     if (results.length > 0) return { results, source: source.name };
   }
   return { results: [], source: "none" };
