@@ -2,22 +2,20 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import AuthLayout from "@/components/AuthLayout";
-import LoginForm from "@/components/LoginForm";
+import SignupForm from "@/components/SignupForm";
 import GoogleButton from "@/components/GoogleButton";
+import { SIGNUP_FREE_CREDITS } from "@/lib/constants";
 
-export default async function LoginPage() {
+export default async function SignupPage() {
   const session = await auth();
   if (session?.user) redirect("/dashboard");
 
   return (
-    <AuthLayout quote="Modelinin bilmediği her şey, canlı web'de.">
-      <p className="eyebrow-plain">Giriş</p>
-      <h1 className="display mt-3 text-4xl">Tekrar hoş geldin</h1>
+    <AuthLayout quote="Ajanlarını gerçek zamanlı web'e bağla. İlk 2000 kredi bizden.">
+      <p className="eyebrow-plain">Kayıt ol</p>
+      <h1 className="display mt-3 text-4xl">Hesabını oluştur</h1>
       <p className="mt-3 text-clouda-muted">
-        Hesabın yok mu?{" "}
-        <Link href="/signup" className="font-medium text-clouda-ink underline underline-offset-4">
-          Ücretsiz kayıt ol
-        </Link>
+        {SIGNUP_FREE_CREDITS.toLocaleString("tr-TR")} ücretsiz kredi hediye, kredi kartı gerekmez.
       </p>
 
       <div className="mt-8">
@@ -30,7 +28,14 @@ export default async function LoginPage() {
         <span className="h-px flex-1 bg-clouda-border" />
       </div>
 
-      <LoginForm />
+      <SignupForm />
+
+      <p className="mt-6 text-sm text-clouda-muted">
+        Zaten hesabın var mı?{" "}
+        <Link href="/login" className="font-medium text-clouda-ink underline underline-offset-4">
+          Giriş yap
+        </Link>
+      </p>
     </AuthLayout>
   );
 }

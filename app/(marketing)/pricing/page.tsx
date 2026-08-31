@@ -41,7 +41,7 @@ const tiers = [
 export default function PricingPage() {
   return (
     <section className="mx-auto max-w-[1240px] px-6 py-20">
-      <p className="slug">/fiyatlandırma</p>
+      <p className="eyebrow-plain">fiyatlandırma</p>
       <h1 className="display mt-4 max-w-2xl text-[40px] sm:text-6xl">
         Basit, kredi bazlı fiyatlandırma
       </h1>
@@ -56,22 +56,22 @@ export default function PricingPage() {
             key={tier.name}
             className={`flex flex-col rounded-card border p-8 ${
               tier.featured
-                ? "border-clouda-sage bg-clouda-sageSoft/60"
-                : "border-clouda-border bg-white shadow-card"
+                ? "border-clouda-indigo bg-clouda-indigoSoft/60"
+                : "border-clouda-border bg-white "
             }`}
           >
-            <h3 className="eyebrow">{tier.name}</h3>
+            <h3 className="eyebrow-plain">{tier.name}</h3>
             <p className="mt-6 text-4xl font-medium tracking-[-0.03em] text-clouda-ink">
               {tier.price}
             </p>
             <p className="mt-1.5 text-sm text-clouda-muted">{tier.period}</p>
-            <p className="mt-6 w-fit rounded-pill border border-clouda-border bg-white px-3 py-1.5 text-xs font-medium text-clouda-sageDark">
+            <p className="mt-6 w-fit rounded-btn border border-clouda-border bg-white px-3 py-1.5 text-xs font-medium text-clouda-indigo">
               {tier.credits}
             </p>
             <ul className="mt-8 flex-1 space-y-3.5">
               {tier.features.map((f) => (
                 <li key={f} className="flex items-start gap-2.5 text-sm text-clouda-muted">
-                  <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded bg-clouda-sage text-white">
+                  <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded bg-clouda-indigo text-white">
                     <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                       <path
                         d="M2.5 6.5l2.5 2.5 4.5-5"
@@ -88,10 +88,10 @@ export default function PricingPage() {
             </ul>
             <Link
               href={tier.href}
-              className={`mt-10 rounded-pill px-6 py-3.5 text-center text-[15px] font-medium transition ${
+              className={`mt-10 rounded-btn px-6 py-3.5 text-center text-[15px] font-medium transition ${
                 tier.featured
-                  ? "bg-clouda-ink text-white hover:bg-black"
-                  : "border border-clouda-border bg-white text-clouda-ink hover:border-clouda-ink/25"
+                  ? "bg-clouda-ink text-white hover:bg-clouda-ink/85"
+                  : "border border-clouda-border bg-white text-clouda-ink hover:border-clouda-ink"
               }`}
             >
               {tier.cta}

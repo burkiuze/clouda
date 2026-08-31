@@ -70,14 +70,14 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
         <button
           onClick={createKey}
           disabled={creating}
-          className="rounded-pill bg-clouda-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
+          className="rounded-btn bg-clouda-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-clouda-ink/85 disabled:opacity-50"
         >
           {creating ? "Oluşturuluyor…" : "Yeni anahtar"}
         </button>
       </div>
 
       {newKey && (
-        <div className="mt-6 rounded-card border border-clouda-sage bg-clouda-sageSoft/60 p-5">
+        <div className="mt-6 rounded-card border border-clouda-indigo bg-clouda-indigoSoft/60 p-5">
           <p className="text-sm font-medium text-clouda-ink">
             Bu anahtarı şimdi kopyala — bir daha tam olarak gösterilmeyecek.
           </p>
@@ -87,13 +87,13 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
           <div className="mt-3 flex gap-2">
             <button
               onClick={copyKey}
-              className="rounded-pill bg-clouda-ink px-4 py-2 text-xs font-medium text-white"
+              className="rounded-btn bg-clouda-ink px-4 py-2 text-xs font-medium text-white"
             >
               {copied ? "Kopyalandı" : "Kopyala"}
             </button>
             <button
               onClick={() => setNewKey(null)}
-              className="rounded-pill px-4 py-2 text-xs font-medium text-clouda-muted hover:text-clouda-ink"
+              className="rounded-btn px-4 py-2 text-xs font-medium text-clouda-muted hover:text-clouda-ink"
             >
               Kapat
             </button>
@@ -125,11 +125,11 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
                 <td className="py-3.5 pr-4 font-mono text-xs text-clouda-muted">{k.keyPrefix}</td>
                 <td className="py-3.5 pr-4">
                   {k.revoked ? (
-                    <span className="rounded-pill border border-clouda-border px-2.5 py-1 text-xs text-clouda-muted">
+                    <span className="rounded-btn border border-clouda-border px-2.5 py-1 text-xs text-clouda-muted">
                       İptal edildi
                     </span>
                   ) : (
-                    <span className="rounded-pill bg-clouda-sageSoft px-2.5 py-1 text-xs font-medium text-clouda-sageDark">
+                    <span className="rounded-btn bg-clouda-indigoSoft px-2.5 py-1 text-xs font-medium text-clouda-indigo">
                       Aktif
                     </span>
                   )}

@@ -11,11 +11,11 @@ const errors = [
 export default function DocsPage() {
   return (
     <section className="mx-auto max-w-[900px] px-6 py-20">
-      <p className="slug">/dokümantasyon</p>
+      <p className="eyebrow-plain">dokümantasyon</p>
       <h1 className="display mt-4 text-[40px] sm:text-5xl">API referansı</h1>
       <p className="mt-6 max-w-xl text-lg text-clouda-muted">
         Clouda tek bir uç noktadan oluşur. Anahtarını{" "}
-        <Link href="/dashboard" className="text-clouda-sageDark underline underline-offset-4">
+        <Link href="/dashboard" className="text-clouda-indigo underline underline-offset-4">
           panelden
         </Link>{" "}
         oluştur, aşağıdaki isteği gönder.
@@ -23,7 +23,7 @@ export default function DocsPage() {
 
       <div className="card mt-12 p-8">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-pill bg-clouda-sageSoft px-3 py-1.5 font-mono text-xs font-medium text-clouda-sageDark">
+          <span className="rounded-btn bg-clouda-indigoSoft px-3 py-1.5 font-mono text-xs font-medium text-clouda-indigo">
             POST
           </span>
           <code className="font-mono text-[15px] text-clouda-ink">/api/v1/search</code>
@@ -34,13 +34,13 @@ export default function DocsPage() {
           düşer.
         </p>
 
-        <h3 className="eyebrow mt-10">Başlıklar</h3>
+        <h3 className="eyebrow-plain mt-10">Başlıklar</h3>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
 {`Authorization: Bearer cld_live_xxxxxxxx
 Content-Type: application/json`}
         </pre>
 
-        <h3 className="eyebrow mt-10">İstek gövdesi</h3>
+        <h3 className="eyebrow-plain mt-10">İstek gövdesi</h3>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
 {`{
   "query": "aranacak metin",
@@ -49,7 +49,7 @@ Content-Type: application/json`}
 }`}
         </pre>
 
-        <h3 className="eyebrow mt-10">Yanıt</h3>
+        <h3 className="eyebrow-plain mt-10">Yanıt</h3>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
 {`{
   "query": "aranacak metin",
@@ -68,11 +68,11 @@ Content-Type: application/json`}
 }`}
         </pre>
 
-        <h3 className="eyebrow mt-10">Hata kodları</h3>
+        <h3 className="eyebrow-plain mt-10">Hata kodları</h3>
         <div className="mt-3 divide-y divide-clouda-border">
           {errors.map((e) => (
             <div key={e.code} className="flex gap-5 py-3">
-              <code className="font-mono text-sm text-clouda-sageDark">{e.code}</code>
+              <code className="font-mono text-sm text-clouda-indigo">{e.code}</code>
               <span className="text-sm text-clouda-muted">{e.desc}</span>
             </div>
           ))}

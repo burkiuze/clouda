@@ -2,97 +2,102 @@ import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
 import CodeSnippet from "@/components/CodeSnippet";
 
-const stats = [
-  { value: "2.000", label: "yeni her hesaba ücretsiz kredi", bar: "bg-clouda-sky" },
-  { value: "10 kredi", label: "arama isteği başına sabit fiyat", bar: "bg-clouda-violet" },
-  { value: "6 kaynak", label: "her sorguda paralel sorgulanır", bar: "bg-clouda-amber" },
-];
-
-const capabilities = [
+const features = [
   {
     title: "Modelleri taze web bağlamıyla besleyin",
     body: "Canlı web verisini getirir, ilgili içeriği çıkarır ve modeller için yapılandırılmış biçimde döner; ajanlar uydurmadan, gerçeklerin üzerinden akıl yürütür.",
+    active: true,
   },
   {
     title: "Sayfaları okunabilir metne çevirir",
     body: "Menü, reklam ve script kalabalığı ayıklanır, sayfanın kendi karakter kodlaması korunur. Modeline yalnızca gerçek içerik gider.",
+    active: false,
   },
   {
     title: "Kredi bazlı, tahmin edilebilir maliyet",
     body: "Her arama isteği 10 kredi. Sürpriz fatura yok; kullanımını ve kalan kredini panelden anlık takip edersin.",
+    active: false,
   },
+];
+
+const stats = [
+  { value: "2.000", label: "her yeni hesaba ücretsiz kredi" },
+  { value: "10 kredi", label: "arama isteği başına sabit fiyat" },
+  { value: "6 kaynak", label: "her sorguda paralel sorgulanır" },
 ];
 
 export default function Home() {
   return (
     <>
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div
-          className="absolute inset-0 -z-10 bg-cover bg-center"
-          style={{ backgroundImage: "url(/hero.jpg)" }}
-          aria-hidden="true"
-        />
-        {/* Keeps the wash at the edges and the type on a calm, light centre. */}
-        <div
-          className="absolute inset-0 -z-10"
-          style={{
-            background:
-              "radial-gradient(70% 55% at 50% 38%, rgba(250,248,245,0.92) 0%, rgba(250,248,245,0.55) 45%, rgba(250,248,245,0) 100%)",
-          }}
-          aria-hidden="true"
-        />
-        <div
-          className="absolute inset-0 -z-10 bg-gradient-to-b from-clouda-bg/70 via-transparent to-clouda-bg"
-          aria-hidden="true"
-        />
-
-        <div className="mx-auto max-w-[1240px] px-6 pb-24 pt-20 text-center sm:pt-28">
-          <h1 className="display mx-auto max-w-4xl text-[42px] sm:text-6xl lg:text-[76px]">
-            Yapay zeka ajanlarınızı
-            <br />
-            <span className="text-clouda-sage">web&apos;e bağlayın</span>
-          </h1>
-          <p className="mx-auto mt-7 max-w-xl text-lg text-clouda-muted">
-            Gerçek zamanlı web erişimi için tek bir API.
-          </p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/login" className="btn-dark">
-              Ücretsiz dene
-            </Link>
-            <Link href="/docs" className="btn-light">
-              API dokümanı
-            </Link>
-          </div>
-
-          <div className="mx-auto mt-16 max-w-3xl">
-            <DemoSearch />
-            <p className="mt-4 text-sm text-clouda-muted">
-              Bu kutu Clouda&apos;nın gerçek arama motorunu kullanır — kayıt gerekmez.
+      {/* Split hero */}
+      <section className="grid grid-cols-1 lg:grid-cols-2">
+        <div className="flex items-center bg-clouda-bg px-6 py-16 sm:px-12 lg:px-16 lg:py-24">
+          <div className="max-w-xl">
+            <p className="eyebrow">clouda &amp; arama api</p>
+            <h1 className="display mt-8 text-[44px] sm:text-6xl lg:text-[68px]">
+              Yapay zeka ajanları için eksiksiz web erişimi
+            </h1>
+            <p className="prose-serif mt-8">
+              Clouda, modellerinin ve ajanlarının gerçek zamanlı web&apos;e erişmesini sağlayan tek
+              bir API&apos;dir. Arar, sayfaların içeriğini çıkarır ve doğrudan modele
+              verilebilecek temiz sonuçlar döner.
             </p>
+            <div className="mt-9 flex flex-wrap gap-3">
+              <Link href="/signup" className="btn-dark">
+                Ücretsiz başla
+              </Link>
+              <Link href="/docs" className="btn-outline">
+                API dokümanı
+              </Link>
+            </div>
+            <div className="mt-12 space-y-1.5">
+              <p className="eyebrow-plain">2000 ücretsiz kredi. kredi kartı gerekmez.</p>
+              <p className="eyebrow-plain">tek uç nokta, saf json, sağlayıcı kilidi yok</p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="relative flex items-center justify-center bg-clouda-panel bg-cover bg-center px-6 py-16 lg:px-12"
+          style={{ backgroundImage: "url(/hero.jpg)" }}
+        >
+          <div id="urun" className="w-full max-w-xl">
+            <DemoSearch />
           </div>
         </div>
       </section>
 
-      {/* Capability section */}
-      <section id="nasil-calisir" className="border-t border-clouda-border bg-clouda-bg">
-        <div className="mx-auto max-w-[1240px] px-6 py-24">
-          <p className="slug">/ajanlar için web erişim katmanı</p>
-          <h2 className="display mt-4 max-w-3xl text-[34px] sm:text-5xl">
-            Geliştiriciler için basit, üretim için sağlam
+      {/* Product section */}
+      <section className="border-t border-clouda-border bg-white">
+        <div className="mx-auto max-w-[1400px] px-6 py-24 lg:px-10">
+          <p className="eyebrow-plain">clouda search api</p>
+          <h2 className="display mt-6 max-w-3xl text-[36px] sm:text-5xl">
+            Tek uç noktalı, üretime hazır arama altyapısı
           </h2>
+          <p className="prose-serif mt-7 max-w-2xl">
+            SDK kurulumu, arama sağlayıcısı hesabı ya da altyapı yönetimi yok. Anahtarını al,
+            çağır. Sonuç başlık, bağlantı, özet ve sayfadan çıkarılmış okunabilir metinle gelir.
+          </p>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link href="/signup" className="btn-dark">
+              Ücretsiz başla
+            </Link>
+            <Link href="/docs" className="btn-outline">
+              Dokümantasyonu incele
+            </Link>
+          </div>
 
-          <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
-            <div className="card p-7">
-              <div className="rounded-xl bg-clouda-bg px-4 py-3 font-mono text-sm text-clouda-ink">
+          <div className="mt-16 rounded-card border border-clouda-border bg-clouda-panel p-6 sm:p-12">
+            <div className="mx-auto max-w-3xl rounded-card border border-clouda-border bg-white p-6">
+              <div className="rounded-btn bg-clouda-bg px-4 py-3 font-mono text-sm">
                 clouda.search(<span className="text-clouda-muted">&quot;sorgun&quot;</span>)
               </div>
-              <p className="mt-6 font-mono text-xs text-clouda-muted">Found sources 180 ms</p>
+              <p className="mt-6 font-mono text-xs text-clouda-muted">Found sources · 180 ms</p>
               <div className="mt-4 space-y-5">
-                {[0, 1, 2].map((i) => (
+                {[62, 78, 48].map((w, i) => (
                   <div key={i}>
                     <div className="flex items-center gap-3">
-                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-clouda-sage text-white">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center bg-clouda-indigo text-white">
                         <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                           <path
                             d="M2.5 6.5l2.5 2.5 4.5-5"
@@ -103,18 +108,15 @@ export default function Home() {
                           />
                         </svg>
                       </span>
-                      <span
-                        className="h-2.5 rounded-full bg-clouda-border"
-                        style={{ width: `${[62, 76, 48][i]}%` }}
-                      />
+                      <span className="h-2.5 rounded-full bg-clouda-border" style={{ width: `${w}%` }} />
                     </div>
                     <p className="mt-3 pl-8 font-mono text-xs text-clouda-muted">Relevant chunks</p>
                     <div className="mt-2 flex gap-2 pl-8">
-                      {[0, 1, 2].map((j) => (
+                      {[74, 52, 62].map((cw, j) => (
                         <span
                           key={j}
-                          className="h-5 rounded bg-clouda-sageSoft"
-                          style={{ width: `${[74, 52, 62][j]}px` }}
+                          className="h-5 rounded bg-clouda-indigoSoft"
+                          style={{ width: `${cw}px` }}
                         />
                       ))}
                     </div>
@@ -122,36 +124,44 @@ export default function Home() {
                 ))}
               </div>
             </div>
+          </div>
 
-            <div className="space-y-10">
-              {capabilities.map((c) => (
-                <div key={c.title}>
-                  <h3 className="text-2xl font-medium tracking-[-0.02em] text-clouda-ink">
-                    {c.title}
-                  </h3>
-                  <p className="mt-3 max-w-md leading-relaxed text-clouda-muted">{c.body}</p>
+          <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-3">
+            {features.map((f) => (
+              <div
+                key={f.title}
+                className={`border-t-2 pt-6 ${f.active ? "border-clouda-indigo" : "border-clouda-border"}`}
+              >
+                <div className="flex gap-3">
+                  <span className="mt-2 block h-2.5 w-2.5 shrink-0 bg-clouda-indigo" />
+                  <div>
+                    <h3 className="text-xl font-medium tracking-[-0.02em] text-clouda-ink">
+                      {f.title}
+                    </h3>
+                    <p className="mt-3 leading-relaxed text-clouda-muted">{f.body}</p>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Code */}
-      <section className="border-t border-clouda-border">
-        <div className="mx-auto max-w-[1240px] px-6 py-24">
+      {/* Integration */}
+      <section className="border-t border-clouda-border bg-clouda-bg">
+        <div className="mx-auto max-w-[1400px] px-6 py-24 lg:px-10">
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
             <div>
-              <p className="slug">/entegrasyon</p>
-              <h2 className="display mt-4 text-[34px] sm:text-[44px]">
+              <p className="eyebrow">entegrasyon</p>
+              <h2 className="display mt-6 text-[36px] sm:text-5xl">
                 Tek istek, her dilde çalışır
               </h2>
-              <p className="mt-5 max-w-md leading-relaxed text-clouda-muted">
-                curl, Node ya da Python — fark etmez. SDK kurulumu yok, arama sağlayıcısı hesabı
-                yok. Anahtarını al, mevcut ajanına dakikalar içinde bağla.
+              <p className="prose-serif mt-7 max-w-md">
+                curl, Node ya da Python — fark etmez. Clouda&apos;yı mevcut ajanına, RAG
+                pipeline&apos;ına ya da chatbotuna dakikalar içinde bağla.
               </p>
-              <Link href="/docs" className="btn-light mt-8">
-                Dokümantasyonu incele
+              <Link href="/docs" className="btn-outline mt-9">
+                API referansı
               </Link>
             </div>
             <CodeSnippet />
@@ -160,16 +170,13 @@ export default function Home() {
       </section>
 
       {/* Stats */}
-      <section className="border-t border-clouda-border bg-clouda-bg">
-        <div className="mx-auto max-w-[1240px] px-6 py-24">
-          <p className="slug">/rakamlarla</p>
-          <h2 className="display mt-4 text-[34px] sm:text-5xl">Şeffaf ve tahmin edilebilir</h2>
-          <div className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-3">
+      <section className="border-t border-clouda-border bg-white">
+        <div className="mx-auto max-w-[1400px] px-6 py-20 lg:px-10">
+          <div className="grid grid-cols-1 gap-10 sm:grid-cols-3">
             {stats.map((s) => (
-              <div key={s.label} className="card p-8">
-                <p className="text-4xl font-medium tracking-[-0.03em] text-clouda-ink">{s.value}</p>
-                <span className={`mt-6 block h-1 w-10 rounded-full ${s.bar}`} />
-                <p className="mt-5 text-sm leading-relaxed text-clouda-muted">{s.label}</p>
+              <div key={s.label} className="border-t-2 border-clouda-ink pt-6">
+                <p className="display text-5xl">{s.value}</p>
+                <p className="mt-4 text-clouda-muted">{s.label}</p>
               </div>
             ))}
           </div>
@@ -177,34 +184,30 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section className="relative overflow-hidden border-t border-clouda-border">
+      <section className="grid grid-cols-1 border-t border-clouda-border lg:grid-cols-2">
+        <div className="flex items-center bg-clouda-bg px-6 py-20 sm:px-12 lg:px-16">
+          <div className="max-w-lg">
+            <h2 className="display text-[36px] sm:text-5xl">
+              Bugün 2000 ücretsiz kredi ile başla
+            </h2>
+            <p className="prose-serif mt-6">
+              Kredi kartı gerekmez. Kayıt ol, API anahtarını oluştur, ilk aramanı yap.
+            </p>
+            <div className="mt-9 flex flex-wrap gap-3">
+              <Link href="/signup" className="btn-dark">
+                Hesap oluştur
+              </Link>
+              <Link href="/pricing" className="btn-outline">
+                Fiyatlandırma
+              </Link>
+            </div>
+          </div>
+        </div>
         <div
-          className="absolute inset-0 -z-10 bg-cover bg-center"
+          className="min-h-[280px] bg-cover bg-center"
           style={{ backgroundImage: "url(/cta.jpg)" }}
           aria-hidden="true"
         />
-        <div
-          className="absolute inset-0 -z-10"
-          style={{
-            background:
-              "radial-gradient(65% 60% at 50% 50%, rgba(250,248,245,0.9) 0%, rgba(250,248,245,0.5) 55%, rgba(250,248,245,0.2) 100%)",
-          }}
-          aria-hidden="true"
-        />
-        <div className="mx-auto max-w-[1240px] px-6 py-28 text-center">
-          <h2 className="display mx-auto max-w-2xl text-[34px] sm:text-5xl">
-            Yapay zekanı gerçek zamanlı web aramasıyla güçlendir
-          </h2>
-          <p className="mt-5 text-clouda-muted">Kredi kartı gerekmez. 2000 kredi hediye.</p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
-            <Link href="/docs" className="nav-link">
-              API dokümanını keşfet →
-            </Link>
-            <Link href="/login" className="btn-dark">
-              Hemen başla
-            </Link>
-          </div>
-        </div>
       </section>
     </>
   );

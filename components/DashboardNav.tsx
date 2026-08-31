@@ -41,7 +41,7 @@ export default function DashboardNav({
           >
             <button
               type="submit"
-              className="rounded-pill border border-clouda-border bg-white px-4 py-2 text-xs font-medium text-clouda-ink transition hover:border-clouda-ink/25"
+              className="rounded-btn border border-clouda-border bg-white px-4 py-2 text-xs font-medium text-clouda-ink transition hover:border-clouda-ink"
             >
               Çıkış
             </button>

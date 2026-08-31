@@ -39,9 +39,9 @@ export default function CodeSnippet() {
           <button
             key={tab}
             onClick={() => setActive(tab)}
-            className={`rounded-pill px-4 py-1.5 text-xs font-medium transition ${
+            className={`rounded-btn px-4 py-1.5 text-xs font-medium transition ${
               active === tab
-                ? "bg-clouda-sageSoft text-clouda-sageDark"
+                ? "bg-clouda-indigoSoft text-clouda-indigo"
                 : "text-clouda-muted hover:text-clouda-ink"
             }`}
           >

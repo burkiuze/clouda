@@ -33,7 +33,7 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
    `DATABASE_URL` tanımlıyken build sırasında `prisma migrate deploy`
    otomatik çalışır (`scripts/migrate.mjs`), tanımlı değilken atlanır.
 
-2. **Google OAuth** — [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. **Google OAuth** (opsiyonel, e-posta/şifre ile de kayıt olunabilir) — [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    üzerinden bir OAuth Client ID oluştur (Web application). Authorized
    redirect URI olarak şunu ekle:
    ```
@@ -65,6 +65,19 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
 5. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
 
 Hepsini ekledikten sonra Vercel'de **Redeploy** yap.
+
+## Giriş / kayıt
+
+İki yöntem var:
+
+- **Google ile** — `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` gerekir.
+- **E-posta + şifre** — ek bir servis gerekmez; şifreler bcrypt ile hash'lenip
+  `User.passwordHash` alanında saklanır.
+
+Kayıt sırasında hesap türü sorulur (**bireysel** / **kurumsal**); kurumsalda
+kurum adı da alınır. Google ile gelen kullanıcılar bu soruyu ilk girişte
+`/onboarding` ekranında yanıtlar. Oturumlar JWT tabanlıdır (credentials
+sağlayıcısı bunu gerektirir), kullanıcı kayıtları yine Prisma'da tutulur.
 
 ## API
 

@@ -23,6 +23,8 @@ export default async function DashboardPage() {
     }),
   ]);
 
+  if (user && !user.accountType) redirect("/onboarding");
+
   const credits = user?.credits ?? 0;
   const usedRatio = Math.min(100, Math.round(((SIGNUP_FREE_CREDITS - credits) / SIGNUP_FREE_CREDITS) * 100));
 
@@ -31,18 +33,18 @@ export default async function DashboardPage() {
       <DashboardNav userName={session.user.name} userImage={session.user.image} />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
-        <p className="slug">/panel</p>
+        <p className="eyebrow-plain">panel</p>
         <h1 className="display mt-3 text-4xl">Genel bakış</h1>
 
         <div className="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="card p-8">
-            <h2 className="eyebrow">Kredi bakiyesi</h2>
+            <h2 className="eyebrow-plain">Kredi bakiyesi</h2>
             <p className="mt-5 text-5xl font-medium tracking-[-0.03em] text-clouda-ink">
               {credits.toLocaleString("tr-TR")}
             </p>
             <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-clouda-border">
               <div
-                className="h-full rounded-full bg-clouda-sage"
+                className="h-full rounded-full bg-clouda-indigo"
                 style={{ width: `${100 - usedRatio}%` }}
               />
             </div>
@@ -52,7 +54,7 @@ export default async function DashboardPage() {
           </div>
 
           <div className="card p-8 lg:col-span-2">
-            <h2 className="eyebrow">Hızlı başlangıç</h2>
+            <h2 className="eyebrow-plain">Hızlı başlangıç</h2>
             <p className="mt-5 text-clouda-muted">
               Aşağıdan bir anahtar oluştur, ardından bu isteği gönder:
             </p>
@@ -84,10 +86,10 @@ export default async function DashboardPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-clouda-border">
-                  <th className="eyebrow pb-3 font-mono">Sorgu</th>
-                  <th className="eyebrow pb-3 font-mono">Sonuç</th>
-                  <th className="eyebrow pb-3 font-mono">Kredi</th>
-                  <th className="eyebrow pb-3 font-mono">Tarih</th>
+                  <th className="eyebrow-plain pb-3">Sorgu</th>
+                  <th className="eyebrow-plain pb-3">Sonuç</th>
+                  <th className="eyebrow-plain pb-3">Kredi</th>
+                  <th className="eyebrow-plain pb-3">Tarih</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,7 +104,7 @@ export default async function DashboardPage() {
                   <tr key={log.id} className="border-b border-clouda-border last:border-0">
                     <td className="max-w-xs truncate py-3.5 pr-4 text-clouda-ink">{log.query}</td>
                     <td className="py-3.5 pr-4 text-clouda-muted">{log.resultCount}</td>
-                    <td className="py-3.5 pr-4 text-clouda-sageDark">-{log.creditsUsed}</td>
+                    <td className="py-3.5 pr-4 text-clouda-indigo">-{log.creditsUsed}</td>
                     <td className="py-3.5 pr-4 text-clouda-muted">
                       {log.createdAt.toLocaleString("tr-TR")}
                     </td>

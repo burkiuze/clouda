@@ -12,6 +12,8 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "^6.2.1",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
     "cheerio": "^1.0.0",
     "next": "^15.1.4",
     "next-auth": "^5.0.0-beta.25",

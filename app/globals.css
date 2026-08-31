@@ -7,41 +7,59 @@ html {
 }
 
 body {
-  color: #26262b;
+  color: #0b0b0c;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: #d9e6de;
-  color: #26262b;
+  background: #e8e7fe;
+  color: #0b0b0c;
 }
 
-/* Large, calm display type — generous rather than compressed. */
+/* Oversized, tightly tracked grotesque headline. */
 .display {
-  @apply font-medium leading-[1.05] tracking-[-0.03em];
+  @apply font-medium leading-[0.98] tracking-[-0.035em];
 }
 
-/* Monospace section marker, e.g. /the web access layer for agents */
-.slug {
-  @apply font-mono text-sm text-clouda-muted;
+/* Serif body copy, the counterweight to the grotesque headings. */
+.prose-serif {
+  @apply font-serif text-lg leading-relaxed text-clouda-ink/80;
+}
+
+/* Monospace, uppercase section marker preceded by a small indigo square. */
+.eyebrow {
+  @apply flex items-center gap-3 font-mono text-xs uppercase tracking-[0.12em] text-clouda-ink;
+}
+
+.eyebrow::before {
+  content: "";
+  @apply block h-2.5 w-2.5 shrink-0 bg-clouda-indigo;
+}
+
+.eyebrow-plain {
+  @apply font-mono text-xs uppercase tracking-[0.12em] text-clouda-muted;
 }
 
 .btn-dark {
-  @apply inline-flex items-center justify-center gap-2 rounded-pill bg-clouda-ink px-6 py-3.5 text-[15px] font-medium text-white transition hover:bg-black;
+  @apply inline-flex items-center justify-center gap-2 rounded-btn bg-clouda-ink px-6 py-3.5 text-[15px] font-medium text-white transition hover:bg-clouda-ink/85;
 }
 
-.btn-light {
-  @apply inline-flex items-center justify-center gap-2 rounded-pill border border-clouda-border bg-white px-6 py-3.5 text-[15px] font-medium text-clouda-ink transition hover:border-clouda-ink/25;
-}
-
-.card {
-  @apply rounded-card border border-clouda-border bg-white shadow-card;
+.btn-outline {
+  @apply inline-flex items-center justify-center gap-2 rounded-btn border border-clouda-ink bg-transparent px-6 py-3.5 text-[15px] font-medium text-clouda-ink transition hover:bg-clouda-ink/5;
 }
 
 .nav-link {
-  @apply text-[15px] font-medium text-clouda-muted transition hover:text-clouda-ink;
+  @apply text-[15px] font-medium text-clouda-ink transition hover:opacity-60;
 }
 
-.eyebrow {
-  @apply font-mono text-xs uppercase tracking-[0.16em] text-clouda-muted;
+.field {
+  @apply w-full rounded-btn border border-clouda-border bg-white px-4 py-3 text-[15px] text-clouda-ink outline-none transition placeholder:text-clouda-muted/60 focus:border-clouda-ink;
+}
+
+.field-label {
+  @apply mb-1.5 block text-sm font-medium text-clouda-ink;
+}
+
+.card {
+  @apply rounded-card border border-clouda-border bg-white;
 }

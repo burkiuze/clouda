@@ -52,7 +52,7 @@ export default function DemoSearch() {
     <div className="w-full">
       <form
         onSubmit={handleSubmit}
-        className="rounded-[24px] border border-white/70 bg-white/70 p-5 shadow-lift backdrop-blur-md"
+        className="rounded-card border border-clouda-border bg-white p-5 shadow-[0_18px_50px_-24px_rgba(11,11,12,0.45)]"
       >
         <input
           value={query}
@@ -63,7 +63,7 @@ export default function DemoSearch() {
         />
         <div className="mt-8 flex items-end justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-pill bg-clouda-ink px-4 py-2 text-xs font-medium text-white">
+            <span className="rounded-btn bg-clouda-ink px-3.5 py-1.5 font-mono text-xs text-white">
               search
             </span>
             {examples.map((ex) => (
@@ -74,7 +74,7 @@ export default function DemoSearch() {
                   setQuery(ex);
                   runSearch(ex);
                 }}
-                className="rounded-pill px-3 py-2 text-xs font-medium text-clouda-muted transition hover:bg-white/70 hover:text-clouda-ink"
+                className="rounded-btn px-3 py-1.5 text-xs font-medium text-clouda-muted transition hover:bg-clouda-bg hover:text-clouda-ink"
               >
                 {ex}
               </button>
@@ -84,7 +84,7 @@ export default function DemoSearch() {
             type="submit"
             disabled={loading}
             aria-label="Ara"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-clouda-ink text-white transition hover:bg-black disabled:opacity-50"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-btn bg-clouda-ink text-white transition hover:bg-clouda-ink/85 disabled:opacity-50"
           >
             {loading ? (
               <span className="block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -114,7 +114,7 @@ export default function DemoSearch() {
               Found sources {meta?.tookMs}ms
             </span>
             {meta?.source && (
-              <span className="font-mono text-xs text-clouda-sageDark">{meta.source}</span>
+              <span className="font-mono text-xs text-clouda-indigo">{meta.source}</span>
             )}
           </div>
           <div className="divide-y divide-clouda-border">
@@ -129,10 +129,10 @@ export default function DemoSearch() {
                 href={r.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block px-5 py-4 transition hover:bg-clouda-sageSoft/50"
+                className="block px-5 py-4 transition hover:bg-clouda-bg"
               >
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded bg-clouda-sage text-white">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center bg-clouda-indigo text-white">
                     <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                       <path
                         d="M2.5 6.5l2.5 2.5 4.5-5"
