@@ -11,32 +11,27 @@ export default function DashboardNav({
   userImage?: string | null;
 }) {
   return (
-    <header className="bg-clouda-bg">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
-        <div className="flex items-center gap-6">
+    <header className="border-b border-clouda-border bg-clouda-bg">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
+        <div className="flex items-center gap-8">
           <Logo />
-          <Link
-            href="/docs"
-            className="hidden text-sm font-semibold text-clouda-ink/60 transition hover:text-clouda-ink sm:block"
-          >
+          <Link href="/docs" className="nav-link hidden sm:block">
             Dokümantasyon
           </Link>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2.5">
             {userImage && (
               <Image
                 src={userImage}
                 alt=""
-                width={30}
-                height={30}
+                width={28}
+                height={28}
                 className="rounded-full"
                 unoptimized
               />
             )}
-            <span className="hidden text-sm font-semibold text-clouda-ink sm:inline">
-              {userName}
-            </span>
+            <span className="hidden text-sm font-medium text-clouda-ink sm:inline">{userName}</span>
           </div>
           <form
             action={async () => {
@@ -46,7 +41,7 @@ export default function DashboardNav({
           >
             <button
               type="submit"
-              className="rounded-full bg-white px-4 py-2.5 text-xs font-bold text-clouda-ink transition hover:bg-white/70"
+              className="rounded-pill border border-clouda-border bg-white px-4 py-2 text-xs font-medium text-clouda-ink transition hover:border-clouda-ink/25"
             >
               Çıkış
             </button>

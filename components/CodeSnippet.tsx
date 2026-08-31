@@ -28,33 +28,28 @@ res = requests.post(
 print(res.json()["results"])`,
 };
 
-export default function CodeSnippet({ tone = "dark" }: { tone?: "dark" | "light" }) {
+export default function CodeSnippet() {
   const tabs = Object.keys(snippets);
   const [active, setActive] = useState(tabs[0]);
-  const isDark = tone === "dark";
 
   return (
-    <div
-      className={`overflow-hidden rounded-3xl ${
-        isDark ? "bg-clouda-inkSoft ring-1 ring-white/10" : "bg-clouda-ink"
-      }`}
-    >
-      <div className="flex items-center gap-1 px-3 pt-3">
+    <div className="card overflow-hidden">
+      <div className="flex items-center gap-1 border-b border-clouda-border px-3 py-2.5">
         {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActive(tab)}
-            className={`rounded-full px-4 py-2 text-xs font-bold transition ${
+            className={`rounded-pill px-4 py-1.5 text-xs font-medium transition ${
               active === tab
-                ? "bg-clouda-lime text-clouda-ink"
-                : "text-white/40 hover:text-white/80"
+                ? "bg-clouda-sageSoft text-clouda-sageDark"
+                : "text-clouda-muted hover:text-clouda-ink"
             }`}
           >
             {tab}
           </button>
         ))}
       </div>
-      <pre className="overflow-x-auto p-6 font-mono text-[13px] leading-relaxed text-violet-100">
+      <pre className="overflow-x-auto bg-clouda-bg/60 p-6 font-mono text-[13px] leading-relaxed text-clouda-ink">
         <code>{snippets[active]}</code>
       </pre>
     </div>

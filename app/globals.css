@@ -7,51 +7,41 @@ html {
 }
 
 body {
-  color: #0a0612;
+  color: #26262b;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: #dcff57;
-  color: #0a0612;
+  background: #d9e6de;
+  color: #26262b;
 }
 
-/* fal-style oversized display headline: very tight tracking + leading */
+/* Large, calm display type — generous rather than compressed. */
 .display {
-  @apply font-black leading-[0.92] tracking-tightest;
+  @apply font-medium leading-[1.05] tracking-[-0.03em];
 }
 
-.pill-nav-link {
-  @apply inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[15px] font-medium text-clouda-ink transition hover:bg-black/5;
+/* Monospace section marker, e.g. /the web access layer for agents */
+.slug {
+  @apply font-mono text-sm text-clouda-muted;
 }
 
-.pill-dot {
-  @apply inline-block h-1.5 w-1.5 rounded-full bg-clouda-violet;
+.btn-dark {
+  @apply inline-flex items-center justify-center gap-2 rounded-pill bg-clouda-ink px-6 py-3.5 text-[15px] font-medium text-white transition hover:bg-black;
 }
 
-.btn-primary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-clouda-ink px-6 py-3 text-sm font-bold text-white transition hover:bg-clouda-violetDark;
+.btn-light {
+  @apply inline-flex items-center justify-center gap-2 rounded-pill border border-clouda-border bg-white px-6 py-3.5 text-[15px] font-medium text-clouda-ink transition hover:border-clouda-ink/25;
 }
 
-.btn-secondary {
-  @apply inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-clouda-ink transition hover:bg-white/70;
+.card {
+  @apply rounded-card border border-clouda-border bg-white shadow-card;
 }
 
-.btn-outline-dark {
-  @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/25 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10;
+.nav-link {
+  @apply text-[15px] font-medium text-clouda-muted transition hover:text-clouda-ink;
 }
 
-/* Pixel/CRT sub-brand logotype, echoing the chunky italic wordmarks
-   used on product panels. */
-.pixel-mark {
-  @apply font-mono text-2xl font-bold italic uppercase tracking-tight;
-  text-shadow: 2px 0 0 currentColor;
-}
-
-.section-label {
-  @apply text-xs font-bold uppercase tracking-[0.22em] text-clouda-violetDark;
-}
-
-.card-mosaic {
-  @apply rounded-2xl p-6 text-sm leading-relaxed;
+.eyebrow {
+  @apply font-mono text-xs uppercase tracking-[0.16em] text-clouda-muted;
 }

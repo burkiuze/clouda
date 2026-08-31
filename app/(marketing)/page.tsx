@@ -1,308 +1,209 @@
 import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
 import CodeSnippet from "@/components/CodeSnippet";
-import { PixelArt, PixelScatter } from "@/components/PixelArt";
 
-const valueProps = [
-  "2000 ücretsiz kredi",
-  "tek uç nokta",
-  "kurulum yok",
-  "saf JSON",
-  "sağlayıcı kilidi yok",
+const stats = [
+  { value: "2.000", label: "yeni her hesaba ücretsiz kredi", bar: "bg-clouda-sky" },
+  { value: "10 kredi", label: "arama isteği başına sabit fiyat", bar: "bg-clouda-violet" },
+  { value: "6 kaynak", label: "her sorguda paralel sorgulanır", bar: "bg-clouda-amber" },
 ];
 
-const useCases = [
+const capabilities = [
   {
-    title: "Güncel haberler",
-    desc: "Modelin eğitim verisinin bittiği yerden sonrasını canlı olarak getir.",
-    bg: "bg-clouda-cyan",
-    shape: "cloud" as const,
-    fill: "#2563EB",
-    outline: "#DCFF57",
+    title: "Modelleri taze web bağlamıyla besleyin",
+    body: "Canlı web verisini getirir, ilgili içeriği çıkarır ve modeller için yapılandırılmış biçimde döner; ajanlar uydurmadan, gerçeklerin üzerinden akıl yürütür.",
   },
   {
-    title: "Ürün & fiyat araştırması",
-    desc: "Ajanının karar vermesi için sayfa içeriklerini ham metin olarak çıkar.",
-    bg: "bg-clouda-lime",
-    shape: "bolt" as const,
-    fill: "#4C1D95",
-    outline: "#FFFFFF",
+    title: "Sayfaları okunabilir metne çevirir",
+    body: "Menü, reklam ve script kalabalığı ayıklanır, sayfanın kendi karakter kodlaması korunur. Modeline yalnızca gerçek içerik gider.",
   },
   {
-    title: "RAG için kaynak toplama",
-    desc: "Sorgu başına temiz, parçalanmaya hazır içerik blokları al.",
-    bg: "bg-clouda-pink",
-    shape: "cloud" as const,
-    fill: "#BE185D",
-    outline: "#0A0612",
+    title: "Kredi bazlı, tahmin edilebilir maliyet",
+    body: "Her arama isteği 10 kredi. Sürpriz fatura yok; kullanımını ve kalan kredini panelden anlık takip edersin.",
   },
-  {
-    title: "Doğrulama & fact-check",
-    desc: "Modelin ürettiği iddiaları gerçek kaynaklara karşı kontrol ettir.",
-    bg: "bg-clouda-mint",
-    shape: "bolt" as const,
-    fill: "#047857",
-    outline: "#0A0612",
-  },
-];
-
-const mosaic = [
-  {
-    text: "Her yeni hesap 2000 kredi ile başlar. Kredi kartı istemiyoruz.",
-    className: "bg-clouda-lime text-clouda-ink font-bold",
-  },
-  {
-    text: "Arama isteği başına 10 kredi. Şeffaf, sabit fiyat.",
-    className: "bg-white/5 text-white/70",
-  },
-  {
-    text: "Sonuçlar başlık, bağlantı, özet ve okunabilir sayfa içeriğiyle döner.",
-    className: "bg-white/5 text-white/70",
-  },
-  { text: "Kendi arama altyapımız", className: "bg-clouda-panel text-clouda-ink font-bold" },
-  {
-    text: "İptal edilebilir API anahtarları ve kullanım geçmişi panelde.",
-    className: "bg-white/5 text-white/70",
-  },
-  { text: "Anahtarını al, 30 saniyede entegre et.", className: "bg-clouda-cyan text-clouda-ink font-bold" },
 ];
 
 export default function Home() {
   return (
     <>
       {/* Hero */}
-      <section className="relative overflow-hidden bg-clouda-bg">
-        <PixelScatter
-          className="pointer-events-none absolute right-0 top-0 hidden h-[380px] w-[380px] opacity-70 md:block"
-          color="#7C3AED"
-          count={30}
-          seed={11}
+      <section className="relative overflow-hidden">
+        <div
+          className="absolute inset-0 -z-10 bg-cover bg-center"
+          style={{ backgroundImage: "url(/hero.jpg)" }}
+          aria-hidden="true"
         />
-        <PixelArt
-          shape="cloud"
-          className="pointer-events-none absolute -right-16 bottom-[-40px] hidden w-[440px] opacity-90 lg:block"
-          fill="#B9A6FF"
-          outline="#DCFF57"
+        {/* Keeps the wash at the edges and the type on a calm, light centre. */}
+        <div
+          className="absolute inset-0 -z-10"
+          style={{
+            background:
+              "radial-gradient(70% 55% at 50% 38%, rgba(250,248,245,0.92) 0%, rgba(250,248,245,0.55) 45%, rgba(250,248,245,0) 100%)",
+          }}
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-0 -z-10 bg-gradient-to-b from-clouda-bg/70 via-transparent to-clouda-bg"
+          aria-hidden="true"
         />
 
-        <div className="relative mx-auto max-w-[1400px] px-5 pb-28 pt-16 sm:px-8 sm:pt-24">
-          <h1 className="display max-w-[15ch] text-[13vw] leading-[0.9] sm:text-[9vw] lg:text-[7.2rem]">
-            Yapay zeka için web arama altyapısı.
+        <div className="mx-auto max-w-[1240px] px-6 pb-24 pt-20 text-center sm:pt-28">
+          <h1 className="display mx-auto max-w-4xl text-[42px] sm:text-6xl lg:text-[76px]">
+            Yapay zeka ajanlarınızı
+            <br />
+            <span className="text-clouda-sage">web&apos;e bağlayın</span>
           </h1>
-          <p className="mt-8 max-w-lg text-lg leading-relaxed text-clouda-ink/70">
-            Modellerin ve ajanların gerçek zamanlı web&apos;e erişsin. Tek bir API çağrısı
-            gönder, aranmış ve içeriği çıkarılmış temiz sonuçları al.
+          <p className="mx-auto mt-7 max-w-xl text-lg text-clouda-muted">
+            Gerçek zamanlı web erişimi için tek bir API.
           </p>
-          <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link href="/login" className="btn-primary !px-7 !py-3.5 text-base">
-              Ücretsiz başla — 2000 kredi
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/login" className="btn-dark">
+              Ücretsiz dene
             </Link>
-            <Link href="/docs" className="btn-secondary !px-7 !py-3.5 text-base">
-              Dokümantasyon
+            <Link href="/docs" className="btn-light">
+              API dokümanı
             </Link>
           </div>
-        </div>
-      </section>
 
-      {/* Value strip */}
-      <section className="border-y border-black/5 bg-white">
-        <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-5 py-8 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-x-10 gap-y-4">
-            {valueProps.map((v) => (
-              <span
-                key={v}
-                className="text-sm font-bold uppercase tracking-[0.14em] text-clouda-ink/45"
-              >
-                {v}
-              </span>
-            ))}
-          </div>
-          <span className="shrink-0 text-sm font-semibold text-clouda-ink/40">
-            Geliştiriciler için inşa edildi
-          </span>
-        </div>
-      </section>
-
-      {/* Live demo + gallery */}
-      <section id="urun" className="bg-white">
-        <div className="mx-auto max-w-[1400px] px-5 py-24 sm:px-8">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-end">
-            <h2 className="display text-[10vw] sm:text-[7vw] lg:text-[4.6rem]">
-              Modelinin
-              <br />
-              bilmediği her şey
-              <br />
-              canlı web&apos;de
-            </h2>
-            <p className="max-w-md text-lg leading-relaxed text-clouda-ink/60 lg:pb-4">
-              Clouda kendi arama altyapısını çalıştırır: sorguyu alır, ilgili sayfaları bulur,
-              içeriklerini çeker ve gereksiz her şeyi ayıklar. Sonuç, doğrudan{" "}
-              <Link href="/docs" className="font-semibold text-clouda-ink underline">
-                modele verilebilir JSON
-              </Link>
-              . Ücretsiz katman{" "}
-              <Link href="/pricing" className="font-semibold text-clouda-ink underline">
-                2000 kredi
-              </Link>{" "}
-              ile başlar.
-            </p>
-          </div>
-
-          <div className="mt-14">
-            <p className="mb-4 text-2xl font-black tracking-tightest">Şimdi dene →</p>
+          <div className="mx-auto mt-16 max-w-3xl">
             <DemoSearch />
-            <p className="mt-3 text-sm text-clouda-ink/40">
+            <p className="mt-4 text-sm text-clouda-muted">
               Bu kutu Clouda&apos;nın gerçek arama motorunu kullanır — kayıt gerekmez.
             </p>
           </div>
-
-          <div className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {useCases.map((c) => (
-              <div
-                key={c.title}
-                className={`relative overflow-hidden rounded-2xl ${c.bg} p-6 pt-24`}
-              >
-                <PixelArt
-                  shape={c.shape}
-                  fill={c.fill}
-                  outline={c.outline}
-                  cell={8}
-                  className="absolute -right-4 -top-2 h-24 w-40 opacity-90"
-                />
-                <h3 className="relative text-lg font-black tracking-tight text-clouda-ink">
-                  {c.title}
-                </h3>
-                <p className="relative mt-2 text-sm leading-relaxed text-clouda-ink/70">{c.desc}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* Product bento */}
-      <section className="bg-clouda-bg">
-        <div className="mx-auto max-w-[1400px] px-5 py-24 sm:px-8">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,320px)_1fr]">
-            <div className="relative">
-              <h2 className="display text-[12vw] sm:text-[8vw] lg:text-[4.4rem]">
-                Kur,
-                <br />
-                bağla,
-                <br />
-                ölçekle.
-              </h2>
-              <PixelArt
-                shape="bolt"
-                className="mt-8 hidden w-40 lg:block"
-                fill="#7C3AED"
-                outline="#DCFF57"
-              />
+      {/* Capability section */}
+      <section id="nasil-calisir" className="border-t border-clouda-border bg-clouda-bg">
+        <div className="mx-auto max-w-[1240px] px-6 py-24">
+          <p className="slug">/ajanlar için web erişim katmanı</p>
+          <h2 className="display mt-4 max-w-3xl text-[34px] sm:text-5xl">
+            Geliştiriciler için basit, üretim için sağlam
+          </h2>
+
+          <div className="mt-16 grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
+            <div className="card p-7">
+              <div className="rounded-xl bg-clouda-bg px-4 py-3 font-mono text-sm text-clouda-ink">
+                clouda.search(<span className="text-clouda-muted">&quot;sorgun&quot;</span>)
+              </div>
+              <p className="mt-6 font-mono text-xs text-clouda-muted">Found sources 180 ms</p>
+              <div className="mt-4 space-y-5">
+                {[0, 1, 2].map((i) => (
+                  <div key={i}>
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-5 w-5 shrink-0 place-items-center rounded bg-clouda-sage text-white">
+                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path
+                            d="M2.5 6.5l2.5 2.5 4.5-5"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
+                      <span
+                        className="h-2.5 rounded-full bg-clouda-border"
+                        style={{ width: `${[62, 76, 48][i]}%` }}
+                      />
+                    </div>
+                    <p className="mt-3 pl-8 font-mono text-xs text-clouda-muted">Relevant chunks</p>
+                    <div className="mt-2 flex gap-2 pl-8">
+                      {[0, 1, 2].map((j) => (
+                        <span
+                          key={j}
+                          className="h-5 rounded bg-clouda-sageSoft"
+                          style={{ width: `${[74, 52, 62][j]}px` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-5">
-              <div className="rounded-3xl bg-clouda-panel p-8 sm:p-10">
-                <p className="pixel-mark text-clouda-violetDark">clouda SEARCH API</p>
-                <h3 className="display mt-6 max-w-xl text-3xl sm:text-4xl">
-                  Gerçek zamanlı web araması. Üretime hazır.
-                </h3>
-                <p className="mt-4 max-w-xl text-sm leading-relaxed text-clouda-ink/70">
-                  Tek bir REST uç noktası. SDK kurulumu, arama sağlayıcısı hesabı ya da altyapı
-                  yönetimi yok — anahtarını al ve çağır.
-                </p>
-                <ul className="mt-6 space-y-2 text-sm font-medium text-clouda-ink/80">
-                  <li>• LLM ajanlarına ve RAG pipeline&apos;larına doğrudan bağlanır</li>
-                  <li>• Sayfa içeriği çıkarımı ücrete dahil</li>
-                  <li>• İstek başına sabit 10 kredi</li>
-                </ul>
-                <Link href="/docs" className="btn-primary mt-8">
-                  API&apos;yi incele
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div className="rounded-3xl bg-clouda-cyan p-8">
-                  <p className="pixel-mark text-blue-800">clouda EXTRACT</p>
-                  <h3 className="display mt-5 text-2xl sm:text-3xl">
-                    Sayfaları temiz metne çevirir.
+            <div className="space-y-10">
+              {capabilities.map((c) => (
+                <div key={c.title}>
+                  <h3 className="text-2xl font-medium tracking-[-0.02em] text-clouda-ink">
+                    {c.title}
                   </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-clouda-ink/70">
-                    Menü, reklam ve script kalabalığı ayıklanır; modeline yalnızca okunabilir
-                    içerik gider.
-                  </p>
+                  <p className="mt-3 max-w-md leading-relaxed text-clouda-muted">{c.body}</p>
                 </div>
-                <div className="rounded-3xl bg-clouda-lime p-8">
-                  <p className="pixel-mark text-clouda-violetDark">clouda SCALE</p>
-                  <h3 className="display mt-5 text-2xl sm:text-3xl">
-                    Kredi bittiğinde durmaz.
-                  </h3>
-                  <p className="mt-3 text-sm leading-relaxed text-clouda-ink/70">
-                    Panelden kredi ekle, kullanımını takip et; yüksek hacim için bizimle özel
-                    limit konuş.
-                  </p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Dark developer section */}
-      <section id="kaynaklar" className="relative overflow-hidden bg-clouda-ink py-24">
-        <PixelScatter
-          className="pointer-events-none absolute left-0 top-0 h-64 w-64 opacity-40"
-          color="#DCFF57"
-          count={22}
-          seed={3}
-        />
-        <div className="relative mx-auto max-w-[1400px] px-5 sm:px-8">
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-start">
+      {/* Code */}
+      <section className="border-t border-clouda-border">
+        <div className="mx-auto max-w-[1240px] px-6 py-24">
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
             <div>
-              <h2 className="display text-[11vw] text-white sm:text-[7vw] lg:text-[4.4rem]">
-                Tek istek,
-                <br />
-                her yerde
-                <br />
-                çalışır.
+              <p className="slug">/entegrasyon</p>
+              <h2 className="display mt-4 text-[34px] sm:text-[44px]">
+                Tek istek, her dilde çalışır
               </h2>
-              <p className="mt-6 max-w-md text-base leading-relaxed text-white/55">
-                curl, Node ya da Python — fark etmez. Clouda&apos;yı mevcut ajanına dakikalar
-                içinde bağla.
+              <p className="mt-5 max-w-md leading-relaxed text-clouda-muted">
+                curl, Node ya da Python — fark etmez. SDK kurulumu yok, arama sağlayıcısı hesabı
+                yok. Anahtarını al, mevcut ajanına dakikalar içinde bağla.
               </p>
-              <Link href="/login" className="btn-outline-dark mt-8">
-                Anahtarını al
+              <Link href="/docs" className="btn-light mt-8">
+                Dokümantasyonu incele
               </Link>
             </div>
             <CodeSnippet />
           </div>
+        </div>
+      </section>
 
-          <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {mosaic.map((m) => (
-              <div key={m.text} className={`card-mosaic ${m.className}`}>
-                {m.text}
+      {/* Stats */}
+      <section className="border-t border-clouda-border bg-clouda-bg">
+        <div className="mx-auto max-w-[1240px] px-6 py-24">
+          <p className="slug">/rakamlarla</p>
+          <h2 className="display mt-4 text-[34px] sm:text-5xl">Şeffaf ve tahmin edilebilir</h2>
+          <div className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-3">
+            {stats.map((s) => (
+              <div key={s.label} className="card p-8">
+                <p className="text-4xl font-medium tracking-[-0.03em] text-clouda-ink">{s.value}</p>
+                <span className={`mt-6 block h-1 w-10 rounded-full ${s.bar}`} />
+                <p className="mt-5 text-sm leading-relaxed text-clouda-muted">{s.label}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="relative overflow-hidden bg-clouda-bg py-28">
-        <PixelArt
-          shape="cloud"
-          className="pointer-events-none absolute -bottom-16 right-[-80px] hidden w-[460px] opacity-80 md:block"
-          fill="#B9A6FF"
-          outline="#DCFF57"
+      {/* CTA */}
+      <section className="relative overflow-hidden border-t border-clouda-border">
+        <div
+          className="absolute inset-0 -z-10 bg-cover bg-center"
+          style={{ backgroundImage: "url(/cta.jpg)" }}
+          aria-hidden="true"
         />
-        <div className="relative mx-auto max-w-[1400px] px-5 sm:px-8">
-          <h2 className="display max-w-[14ch] text-[12vw] sm:text-[8vw] lg:text-[5.5rem]">
-            Bugün 2000 kredi ile başla.
+        <div
+          className="absolute inset-0 -z-10"
+          style={{
+            background:
+              "radial-gradient(65% 60% at 50% 50%, rgba(250,248,245,0.9) 0%, rgba(250,248,245,0.5) 55%, rgba(250,248,245,0.2) 100%)",
+          }}
+          aria-hidden="true"
+        />
+        <div className="mx-auto max-w-[1240px] px-6 py-28 text-center">
+          <h2 className="display mx-auto max-w-2xl text-[34px] sm:text-5xl">
+            Yapay zekanı gerçek zamanlı web aramasıyla güçlendir
           </h2>
-          <p className="mt-6 max-w-md text-lg text-clouda-ink/60">
-            Kredi kartı gerekmez. Google hesabınla gir, anahtarını oluştur, ilk aramanı yap.
-          </p>
-          <Link href="/login" className="btn-primary mt-8 !px-8 !py-4 text-base">
-            Ücretsiz hesap oluştur
-          </Link>
+          <p className="mt-5 text-clouda-muted">Kredi kartı gerekmez. 2000 kredi hediye.</p>
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
+            <Link href="/docs" className="nav-link">
+              API dokümanını keşfet →
+            </Link>
+            <Link href="/login" className="btn-dark">
+              Hemen başla
+            </Link>
+          </div>
         </div>
       </section>
     </>

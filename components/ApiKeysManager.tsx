@@ -64,36 +64,36 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
   }
 
   return (
-    <div className="rounded-3xl bg-white p-8">
+    <div className="card p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-black tracking-tight text-clouda-ink">API anahtarları</h2>
+        <h2 className="text-xl font-medium tracking-[-0.02em] text-clouda-ink">API anahtarları</h2>
         <button
           onClick={createKey}
           disabled={creating}
-          className="rounded-full bg-clouda-ink px-5 py-2.5 text-sm font-bold text-white transition hover:bg-clouda-violetDark disabled:opacity-60"
+          className="rounded-pill bg-clouda-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
         >
-          {creating ? "Oluşturuluyor…" : "+ Yeni anahtar"}
+          {creating ? "Oluşturuluyor…" : "Yeni anahtar"}
         </button>
       </div>
 
       {newKey && (
-        <div className="mt-5 rounded-2xl border-2 border-clouda-ink bg-clouda-lime p-5">
-          <p className="text-sm font-black text-clouda-ink">
+        <div className="mt-6 rounded-card border border-clouda-sage bg-clouda-sageSoft/60 p-5">
+          <p className="text-sm font-medium text-clouda-ink">
             Bu anahtarı şimdi kopyala — bir daha tam olarak gösterilmeyecek.
           </p>
-          <code className="mt-3 block break-all rounded-xl bg-white px-4 py-3 font-mono text-xs text-clouda-ink">
+          <code className="mt-3 block break-all rounded-xl border border-clouda-border bg-white px-4 py-3 font-mono text-xs text-clouda-ink">
             {newKey}
           </code>
-          <div className="mt-3 flex gap-3">
+          <div className="mt-3 flex gap-2">
             <button
               onClick={copyKey}
-              className="rounded-full bg-clouda-ink px-4 py-2 text-xs font-bold text-white"
+              className="rounded-pill bg-clouda-ink px-4 py-2 text-xs font-medium text-white"
             >
-              {copied ? "Kopyalandı ✓" : "Kopyala"}
+              {copied ? "Kopyalandı" : "Kopyala"}
             </button>
             <button
               onClick={() => setNewKey(null)}
-              className="rounded-full px-4 py-2 text-xs font-bold text-clouda-ink/60 hover:text-clouda-ink"
+              className="rounded-pill px-4 py-2 text-xs font-medium text-clouda-muted hover:text-clouda-ink"
             >
               Kapat
             </button>
@@ -101,44 +101,44 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
         </div>
       )}
 
-      <div className="mt-5 overflow-x-auto">
+      <div className="mt-6 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="text-xs font-black uppercase tracking-[0.14em] text-clouda-ink/35">
-              <th className="pb-3 pr-4">Ad</th>
-              <th className="pb-3 pr-4">Anahtar</th>
-              <th className="pb-3 pr-4">Durum</th>
-              <th className="pb-3 pr-4" />
+            <tr className="border-b border-clouda-border">
+              <th className="eyebrow pb-3 font-mono">Ad</th>
+              <th className="eyebrow pb-3 font-mono">Anahtar</th>
+              <th className="eyebrow pb-3 font-mono">Durum</th>
+              <th className="pb-3" />
             </tr>
           </thead>
           <tbody>
             {keys.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-8 text-center text-sm text-clouda-ink/40">
+                <td colSpan={4} className="py-8 text-center text-clouda-muted">
                   Henüz bir API anahtarın yok.
                 </td>
               </tr>
             )}
             {keys.map((k) => (
-              <tr key={k.id} className="border-t border-black/5">
-                <td className="py-3 pr-4 font-semibold text-clouda-ink">{k.name}</td>
-                <td className="py-3 pr-4 font-mono text-xs text-clouda-ink/50">{k.keyPrefix}</td>
-                <td className="py-3 pr-4">
+              <tr key={k.id} className="border-b border-clouda-border last:border-0">
+                <td className="py-3.5 pr-4 font-medium text-clouda-ink">{k.name}</td>
+                <td className="py-3.5 pr-4 font-mono text-xs text-clouda-muted">{k.keyPrefix}</td>
+                <td className="py-3.5 pr-4">
                   {k.revoked ? (
-                    <span className="rounded-full bg-clouda-pink px-2.5 py-1 text-xs font-bold text-clouda-ink">
+                    <span className="rounded-pill border border-clouda-border px-2.5 py-1 text-xs text-clouda-muted">
                       İptal edildi
                     </span>
                   ) : (
-                    <span className="rounded-full bg-clouda-lime px-2.5 py-1 text-xs font-bold text-clouda-ink">
+                    <span className="rounded-pill bg-clouda-sageSoft px-2.5 py-1 text-xs font-medium text-clouda-sageDark">
                       Aktif
                     </span>
                   )}
                 </td>
-                <td className="py-3 pr-4 text-right">
+                <td className="py-3.5 text-right">
                   {!k.revoked && (
                     <button
                       onClick={() => revokeKey(k.id)}
-                      className="text-xs font-bold text-clouda-ink/45 transition hover:text-red-600"
+                      className="text-xs font-medium text-clouda-muted transition hover:text-red-600"
                     >
                       İptal et
                     </button>

@@ -10,53 +10,47 @@ const errors = [
 
 export default function DocsPage() {
   return (
-    <section className="bg-clouda-bg">
-      <div className="mx-auto max-w-[1000px] px-5 py-20 sm:px-8">
-        <p className="section-label">dokümantasyon</p>
-        <h1 className="display mt-4 text-[12vw] sm:text-[7vw] lg:text-[4.6rem]">API referansı</h1>
-        <p className="mt-6 max-w-xl text-lg text-clouda-ink/60">
-          Clouda tek bir uç noktadan oluşur. Anahtarını{" "}
-          <Link href="/dashboard" className="font-semibold text-clouda-ink underline">
-            panelden
-          </Link>{" "}
-          oluştur, aşağıdaki isteği gönder.
+    <section className="mx-auto max-w-[900px] px-6 py-20">
+      <p className="slug">/dokümantasyon</p>
+      <h1 className="display mt-4 text-[40px] sm:text-5xl">API referansı</h1>
+      <p className="mt-6 max-w-xl text-lg text-clouda-muted">
+        Clouda tek bir uç noktadan oluşur. Anahtarını{" "}
+        <Link href="/dashboard" className="text-clouda-sageDark underline underline-offset-4">
+          panelden
+        </Link>{" "}
+        oluştur, aşağıdaki isteği gönder.
+      </p>
+
+      <div className="card mt-12 p-8">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="rounded-pill bg-clouda-sageSoft px-3 py-1.5 font-mono text-xs font-medium text-clouda-sageDark">
+            POST
+          </span>
+          <code className="font-mono text-[15px] text-clouda-ink">/api/v1/search</code>
+        </div>
+        <p className="mt-5 leading-relaxed text-clouda-muted">
+          Verilen sorgu için web&apos;de arama yapar, sonuç sayfalarının içeriğini çıkarır ve
+          yapılandırılmış JSON döner. İstek başına <strong className="text-clouda-ink">10 kredi</strong>{" "}
+          düşer.
         </p>
 
-        <div className="mt-12 rounded-3xl bg-white p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full bg-clouda-lime px-3 py-1.5 text-xs font-black tracking-wide text-clouda-ink">
-              POST
-            </span>
-            <code className="font-mono text-base font-bold text-clouda-ink">/api/v1/search</code>
-          </div>
-          <p className="mt-4 text-sm leading-relaxed text-clouda-ink/65">
-            Verilen sorgu için web&apos;de arama yapar, sonuç sayfalarının içeriğini çıkarır ve
-            yapılandırılmış JSON döner. İstek başına <strong>10 kredi</strong> düşer.
-          </p>
-
-          <h3 className="mt-8 text-sm font-black uppercase tracking-[0.16em] text-clouda-violetDark">
-            Başlıklar
-          </h3>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-clouda-bg p-5 font-mono text-[13px]">
+        <h3 className="eyebrow mt-10">Başlıklar</h3>
+        <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
 {`Authorization: Bearer cld_live_xxxxxxxx
 Content-Type: application/json`}
-          </pre>
+        </pre>
 
-          <h3 className="mt-8 text-sm font-black uppercase tracking-[0.16em] text-clouda-violetDark">
-            İstek gövdesi
-          </h3>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-clouda-bg p-5 font-mono text-[13px]">
+        <h3 className="eyebrow mt-10">İstek gövdesi</h3>
+        <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
 {`{
   "query": "aranacak metin",
   "max_results": 5,      // opsiyonel, 1-10 arası, varsayılan 5
   "locale": "tr-TR"      // opsiyonel, sonuç dili/bölgesi, varsayılan tr-TR
 }`}
-          </pre>
+        </pre>
 
-          <h3 className="mt-8 text-sm font-black uppercase tracking-[0.16em] text-clouda-violetDark">
-            Yanıt
-          </h3>
-          <pre className="mt-3 overflow-x-auto rounded-2xl bg-clouda-bg p-5 font-mono text-[13px]">
+        <h3 className="eyebrow mt-10">Yanıt</h3>
+        <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
 {`{
   "query": "aranacak metin",
   "results": [
@@ -68,29 +62,26 @@ Content-Type: application/json`}
     }
   ],
   "took_ms": 842,
-  "source": "bing-rss",
+  "source": "tavily",
   "credits_used": 10,
   "credits_remaining": 1990
 }`}
-          </pre>
+        </pre>
 
-          <h3 className="mt-8 text-sm font-black uppercase tracking-[0.16em] text-clouda-violetDark">
-            Hata kodları
-          </h3>
-          <div className="mt-3 divide-y divide-black/5">
-            {errors.map((e) => (
-              <div key={e.code} className="flex gap-4 py-2.5 text-sm">
-                <code className="font-mono font-bold text-clouda-violet">{e.code}</code>
-                <span className="text-clouda-ink/65">{e.desc}</span>
-              </div>
-            ))}
-          </div>
+        <h3 className="eyebrow mt-10">Hata kodları</h3>
+        <div className="mt-3 divide-y divide-clouda-border">
+          {errors.map((e) => (
+            <div key={e.code} className="flex gap-5 py-3">
+              <code className="font-mono text-sm text-clouda-sageDark">{e.code}</code>
+              <span className="text-sm text-clouda-muted">{e.desc}</span>
+            </div>
+          ))}
         </div>
+      </div>
 
-        <h2 className="display mt-16 text-3xl">Örnek istek</h2>
-        <div className="mt-5">
-          <CodeSnippet />
-        </div>
+      <h2 className="display mt-16 text-3xl">Örnek istek</h2>
+      <div className="mt-5">
+        <CodeSnippet />
       </div>
     </section>
   );

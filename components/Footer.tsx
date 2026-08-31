@@ -1,14 +1,13 @@
 import Link from "next/link";
 import Logo from "./Logo";
-import { PixelScatter } from "./PixelArt";
 
 const columns = [
   {
     title: "Ürün",
     links: [
-      { href: "/#urun", label: "Genel bakış" },
-      { href: "/docs", label: "API dokümantasyonu" },
+      { href: "/#nasil-calisir", label: "Genel bakış" },
       { href: "/pricing", label: "Fiyatlandırma" },
+      { href: "/docs", label: "Dokümantasyon" },
     ],
   },
   {
@@ -26,32 +25,24 @@ const columns = [
 
 export default function Footer() {
   return (
-    <footer className="relative overflow-hidden bg-clouda-ink">
-      <PixelScatter
-        className="pointer-events-none absolute bottom-0 right-0 h-56 w-56 opacity-30"
-        color="#7C3AED"
-        count={20}
-        seed={5}
-      />
-      <div className="relative mx-auto max-w-[1400px] px-5 py-16 sm:px-8">
-        <div className="flex flex-col justify-between gap-12 lg:flex-row">
-          <div className="max-w-sm">
-            <Logo tone="light" />
-            <p className="mt-5 text-sm leading-relaxed text-white/50">
-              Clouda, yapay zeka modelleri ve ajanları için gerçek zamanlı web arama
-              altyapısıdır. Tek istek, temiz ve yapılandırılmış sonuçlar.
+    <footer className="border-t border-clouda-border bg-clouda-bg">
+      <div className="mx-auto max-w-[1240px] px-6 py-16">
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_2fr]">
+          <div>
+            <Logo />
+            <p className="mt-5 max-w-xs text-sm leading-relaxed text-clouda-muted">
+              Yapay zeka ajanları için gerçek zamanlı web erişim katmanı. Aranmış, çıkarılmış ve
+              modele hazır sonuçlar.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-10 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
             {columns.map((col) => (
               <div key={col.title}>
-                <h4 className="text-xs font-bold uppercase tracking-[0.18em] text-clouda-lime">
-                  {col.title}
-                </h4>
-                <ul className="mt-4 space-y-2.5 text-sm text-white/55">
+                <h4 className="eyebrow">{col.title}</h4>
+                <ul className="mt-4 space-y-3">
                   {col.links.map((l) => (
                     <li key={l.href}>
-                      <Link href={l.href} className="transition hover:text-white">
+                      <Link href={l.href} className="nav-link">
                         {l.label}
                       </Link>
                     </li>
@@ -61,9 +52,8 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mt-14 flex flex-col items-start justify-between gap-3 border-t border-white/10 pt-6 text-xs text-white/35 sm:flex-row sm:items-center">
-          <span>© {new Date().getFullYear()} Clouda. Tüm hakları saklıdır.</span>
-          <span>Geliştiriciler için inşa edildi.</span>
+        <div className="mt-14 border-t border-clouda-border pt-6 text-xs text-clouda-muted">
+          © {new Date().getFullYear()} Clouda. Tüm hakları saklıdır.
         </div>
       </div>
     </footer>

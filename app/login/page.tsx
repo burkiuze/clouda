@@ -1,35 +1,27 @@
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/lib/auth";
 import Logo from "@/components/Logo";
-import { PixelArt, PixelScatter } from "@/components/PixelArt";
 
 export default async function LoginPage() {
   const session = await auth();
   if (session?.user) redirect("/dashboard");
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-clouda-bg px-5 py-16">
-      <PixelArt
-        shape="cloud"
-        className="pointer-events-none absolute -left-20 bottom-0 hidden w-[420px] opacity-70 md:block"
-        fill="#B9A6FF"
-        outline="#DCFF57"
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-16">
+      <div
+        className="absolute inset-0 -z-10 bg-cover bg-center"
+        style={{ backgroundImage: "url(/hero.jpg)" }}
+        aria-hidden="true"
       />
-      <PixelScatter
-        className="pointer-events-none absolute right-0 top-0 hidden h-72 w-72 opacity-60 md:block"
-        color="#7C3AED"
-        count={24}
-        seed={13}
-      />
+      <div className="absolute inset-0 -z-10 bg-clouda-bg/70" aria-hidden="true" />
 
-      <div className="relative w-full max-w-md rounded-3xl border-2 border-clouda-ink bg-white p-9">
+      <div className="w-full max-w-md rounded-card border border-clouda-border bg-white p-10 shadow-lift">
         <Logo />
-        <h1 className="display mt-8 text-4xl">
-          Hoş geldin.
-        </h1>
-        <p className="mt-4 text-base leading-relaxed text-clouda-ink/60">
-          Google hesabınla gir, anında <strong className="text-clouda-ink">2000 ücretsiz kredi</strong>{" "}
-          hesabına tanımlansın.
+        <h1 className="display mt-8 text-3xl">Hoş geldin</h1>
+        <p className="mt-4 leading-relaxed text-clouda-muted">
+          Google hesabınla gir, anında{" "}
+          <strong className="font-medium text-clouda-ink">2000 ücretsiz kredi</strong> hesabına
+          tanımlansın.
         </p>
 
         <form
@@ -37,13 +29,10 @@ export default async function LoginPage() {
             "use server";
             await signIn("google", { redirectTo: "/dashboard" });
           }}
-          className="mt-8"
+          className="mt-9"
         >
-          <button
-            type="submit"
-            className="flex w-full items-center justify-center gap-3 rounded-full bg-clouda-ink px-6 py-4 text-sm font-bold text-white transition hover:bg-clouda-violetDark"
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <button type="submit" className="btn-dark w-full">
+            <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true">
               <path
                 fill="#4285F4"
                 d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.87 2.7-6.62z"
@@ -65,7 +54,7 @@ export default async function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-xs text-clouda-ink/40">
+        <p className="mt-7 text-xs text-clouda-muted">
           Giriş yaparak kullanım koşullarını kabul etmiş olursun.
         </p>
       </div>

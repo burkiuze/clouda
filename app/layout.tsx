@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Clouda — Yapay zeka için web arama altyapısı",
+  title: "Clouda — Yapay zeka ajanlarını web'e bağlayın",
   description:
-    "Clouda, yapay zeka modellerinin ve ajanlarının gerçek zamanlı web'de arama yapmasını sağlayan API platformudur. Kayıt ol, 2000 ücretsiz kredi kazan.",
+    "Clouda, yapay zeka modellerinin ve ajanlarının gerçek zamanlı web'e erişmesini sağlayan tek bir API'dir. Kayıt ol, 2000 ücretsiz kredi kazan.",
   openGraph: {
-    title: "Clouda — Yapay zeka için web arama altyapısı",
+    title: "Clouda — Yapay zeka ajanlarını web'e bağlayın",
     description:
-      "Modellerinize gerçek zamanlı web arama gücü katın. Tek API çağrısı, temiz sonuçlar.",
+      "Gerçek zamanlı web erişimi için tek güvenli API. Aranmış, çıkarılmış ve modele hazır sonuçlar.",
     siteName: "Clouda",
     type: "website",
   },
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
           rel="stylesheet"
         />
       </head>

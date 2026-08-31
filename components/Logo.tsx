@@ -9,10 +9,10 @@ export default function Logo({
   tone?: "dark" | "light";
 }) {
   return (
-    <Link href="/" className={`flex shrink-0 items-center gap-2 ${className}`}>
-      <Image src="/logo.png" alt="" width={40} height={23} priority className="h-7 w-auto" />
+    <Link href="/" className={`flex shrink-0 items-center gap-2.5 ${className}`}>
+      <Image src="/logo.png" alt="" width={40} height={23} priority className="h-6 w-auto" />
       <span
-        className={`text-[26px] font-black tracking-tightest ${
+        className={`text-[22px] font-semibold tracking-[-0.02em] ${
           tone === "light" ? "text-white" : "text-clouda-ink"
         }`}
       >
