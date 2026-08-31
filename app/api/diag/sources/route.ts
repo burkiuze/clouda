@@ -221,6 +221,12 @@ export async function GET(req: NextRequest) {
   if (raw) {
     const urls: Record<string, string> = {
       marginalia: `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
+      // Two candidate ways to turn a Turkish query into an English one, since
+      // the general-web index only covers English.
+      mymemory: `https://api.mymemory.translated.net/get?q=${encodeURIComponent(query)}&langpair=tr|en`,
+      wikidata: `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(
+        query
+      )}&language=tr&uselang=tr&format=json&limit=3`,
       stackexchange: `https://api.stackexchange.com/2.3/search/excerpts?order=desc&sort=relevance&q=${encodeURIComponent(query)}&site=stackoverflow&pagesize=2`,
       npm: `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=2`,
     };
