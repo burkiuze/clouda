@@ -30,6 +30,13 @@ const endpoints = [
   },
   {
     method: "POST",
+    path: "/api/v1/extract",
+    capability: "her zaman açık",
+    cost: `${CREDITS.extractBase} + adres başına ${CREDITS.extractPerUrl}`,
+    summary: "Elindeki adresleri temiz, modele hazır metne çevirir.",
+  },
+  {
+    method: "POST",
     path: "/api/v1/monitors",
     capability: "monitor",
     cost: `kontrol başına ${CREDITS.monitorCheck}`,
@@ -310,6 +317,40 @@ Content-Type: application/json`}</Code>
           </p>
         </Section>
 
+        <Section id="extract">
+          <h2 className="display text-3xl">Extract</h2>
+          <p className="mt-4 text-clouda-muted">
+            Arama &quot;ne okumalıyım&quot; sorusunu cevaplar; bu uç nokta &quot;bu sayfa ne
+            diyor&quot; sorusunu. Adresleri zaten başka bir yerden aldıysan, menüyü, çerez
+            uyarısını ve altbilgiyi ayıklayıp geriye okunabilir metni bırakır. Her adres
+            platformun geri kalanıyla aynı SSRF politikasından geçer.
+          </p>
+          <Code>{`POST /api/v1/extract
+
+{
+  "urls": ["https://ornek.com/makale"],  // tek adres için "url" da olur, en fazla 10
+  "max_chars": 4000
+}`}</Code>
+          <Code>{`{
+  "pages": [
+    {
+      "url": "https://ornek.com/makale",
+      "ok": true,
+      "title": "…",
+      "content": "…",
+      "published_at": "2026-08-20T09:00:00.000Z",
+      "truncated": false
+    }
+  ],
+  "requested": 1,
+  "extracted": 1
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Okunamayan sayfa <code className="font-mono">ok: false</code> ile döner ve
+            ücretlendirilmez; yalnızca gerçekten çıkarılan sayfalar için kredi düşer.
+          </p>
+        </Section>
+
         <Section id="monitoring">
           <h2 className="display text-3xl">Monitoring</h2>
           <p className="mt-4 text-clouda-muted">
@@ -335,6 +376,28 @@ Content-Type: application/json`}</Code>
   "occurred_at": "2026-08-31T18:00:00.000Z",
   "data": { "previousPrices": ["1.299 TL"], "currentPrices": ["1.149 TL"] }
 }`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Webhook doğrulama.</strong> Her çağrı{" "}
+            <code className="font-mono">X-Clouda-Signature: v1=&lt;hex&gt;</code> ve{" "}
+            <code className="font-mono">X-Clouda-Timestamp</code> başlıklarıyla gelir. İmza,
+            anahtarı oluştururken bir kez gösterilen <code className="font-mono">webhookSecret</code>{" "}
+            ile <code className="font-mono">HMAC-SHA256(&quot;&lt;timestamp&gt;.&lt;gövde&gt;&quot;)</code>{" "}
+            olarak hesaplanır. Doğrulamadan hiçbir çağrıya güvenme: imzasız bir webhook, adresi
+            öğrenen herkesin sisteminize sahte bildirim gönderebileceği açık bir uçtur.
+          </p>
+          <Code>{`// Node ile doğrulama
+import { createHmac, timingSafeEqual } from "crypto";
+
+const expected = "v1=" + createHmac("sha256", process.env.CLOUDA_WEBHOOK_SECRET)
+  .update(req.headers["x-clouda-timestamp"] + "." + rawBody)
+  .digest("hex");
+
+const a = Buffer.from(expected);
+const b = Buffer.from(req.headers["x-clouda-signature"]);
+const valid = a.length === b.length && timingSafeEqual(a, b);
+
+// Tekrar saldırısını kes: 5 dakikadan eski çağrıyı reddet.
+const fresh = Math.abs(Date.now() / 1000 - Number(req.headers["x-clouda-timestamp"])) < 300;`}</Code>
           <p className="mt-4 text-sm text-clouda-muted">
             <code className="font-mono">GET /api/v1/monitors</code> izleyicileri ve son olayları
             listeler, <code className="font-mono">DELETE /api/v1/monitors/&#123;id&#125;</code>{" "}

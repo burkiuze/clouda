@@ -15,11 +15,13 @@ import { NextRequest, NextResponse } from "next/server";
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
-  // Tailwind emits a style element and React sets inline styles.
-  "style-src 'self' 'unsafe-inline'",
+  // Tailwind emits a style element, React sets inline styles, and the layout
+  // pulls Inter and Source Serif from Google Fonts.
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   // Google profile pictures on the dashboard, plus inline SVG data URIs.
   "img-src 'self' data: blob: https://lh3.googleusercontent.com https://*.googleusercontent.com",
-  "font-src 'self' data:",
+  // The stylesheet above resolves its font files from this origin.
+  "font-src 'self' data: https://fonts.gstatic.com",
   "connect-src 'self'",
   // Nothing here should be embedded, and nothing here embeds anything.
   "frame-src 'none'",
