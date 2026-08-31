@@ -5,6 +5,7 @@ import DashboardNav from "@/components/DashboardNav";
 import ApiKeysManager from "@/components/ApiKeysManager";
 import { CREDITS_PER_SEARCH, SIGNUP_FREE_CREDITS } from "@/lib/constants";
 import { recentSecurityEvents } from "@/lib/core/audit";
+import { usageSummary } from "@/lib/core/metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
 
   const userId = (session.user as typeof session.user & { id: string }).id;
 
-  const [user, apiKeys, usageLogs, securityEvents] = await Promise.all([
+  const [user, apiKeys, usageLogs, securityEvents, usage, monitors] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.apiKey.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.usageLog.findMany({
@@ -37,6 +38,20 @@ export default async function DashboardPage() {
       take: 10,
     }),
     recentSecurityEvents(userId, 8),
+    usageSummary(userId, 24).catch(() => null),
+    prisma.monitor.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: {
+        id: true,
+        type: true,
+        target: true,
+        active: true,
+        intervalMinutes: true,
+        lastCheckedAt: true,
+      },
+    }),
   ]);
 
   if (user && !user.accountType) redirect("/onboarding");
@@ -80,6 +95,106 @@ export default async function DashboardPage() {
   -H "Content-Type: application/json" \\
   -d '{"query": "aranacak metin"}'`}
             </pre>
+          </div>
+        </div>
+
+        <div className="mt-10">
+          <p className="eyebrow-plain">son 24 saat</p>
+          <h2 className="display mt-3 text-2xl">Kullanım ve performans</h2>
+          <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-6">
+            {[
+              { label: "İstek", value: usage ? usage.totals.requests.toLocaleString("tr-TR") : "—" },
+              { label: "Harcanan kredi", value: usage ? usage.totals.credits.toLocaleString("tr-TR") : "—" },
+              { label: "Hata oranı", value: usage ? `%${Math.round(usage.errorRate * 100)}` : "—" },
+              { label: "Önbellek isabeti", value: usage ? `%${Math.round(usage.cacheHitRate * 100)}` : "—" },
+              { label: "Gecikme p50", value: usage ? `${usage.p50LatencyMs} ms` : "—" },
+              { label: "Gecikme p95", value: usage ? `${usage.p95LatencyMs} ms` : "—" },
+            ].map((stat) => (
+              <div key={stat.label} className="card p-5">
+                <p className="eyebrow-plain text-[10px]">{stat.label}</p>
+                <p className="mt-3 text-2xl font-medium tracking-[-0.02em] text-clouda-ink">
+                  {stat.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {usage && Object.keys(usage.byOperation).length > 0 && (
+            <div className="card mt-4 overflow-x-auto p-6">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-clouda-border">
+                    <th className="eyebrow-plain pb-3">İşlem</th>
+                    <th className="eyebrow-plain pb-3">İstek</th>
+                    <th className="eyebrow-plain pb-3">Kredi</th>
+                    <th className="eyebrow-plain pb-3">Ort. gecikme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(usage.byOperation).map(([op, row]) => (
+                    <tr key={op} className="border-b border-clouda-border last:border-0">
+                      <td className="py-3 pr-4 font-mono text-xs text-clouda-indigo">{op}</td>
+                      <td className="py-3 pr-4 text-clouda-ink">{row.requests}</td>
+                      <td className="py-3 pr-4 text-clouda-muted">{row.credits}</td>
+                      <td className="py-3 pr-4 text-clouda-muted">{row.avgLatencyMs} ms</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-10">
+          <p className="eyebrow-plain">izleyiciler</p>
+          <h2 className="display mt-3 text-2xl">Web monitoring</h2>
+          <p className="mt-3 max-w-2xl text-sm text-clouda-muted">
+            İzleyiciler API üzerinden oluşturulur (<code className="font-mono">POST /api/v1/monitors</code>);
+            burada durumları görünür. Kredisi biten hesabın izleyicileri hata döngüsüne
+            girmek yerine duraklatılır.
+          </p>
+          <div className="card mt-5 overflow-x-auto p-6">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-clouda-border">
+                  <th className="eyebrow-plain pb-3">Tür</th>
+                  <th className="eyebrow-plain pb-3">Hedef</th>
+                  <th className="eyebrow-plain pb-3">Sıklık</th>
+                  <th className="eyebrow-plain pb-3">Son kontrol</th>
+                  <th className="eyebrow-plain pb-3">Durum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monitors.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-clouda-muted">
+                      Henüz izleyici yok.
+                    </td>
+                  </tr>
+                )}
+                {monitors.map((m) => (
+                  <tr key={m.id} className="border-b border-clouda-border last:border-0">
+                    <td className="py-3 pr-4 font-mono text-xs text-clouda-indigo">{m.type}</td>
+                    <td className="max-w-xs truncate py-3 pr-4 text-clouda-ink">{m.target}</td>
+                    <td className="py-3 pr-4 text-clouda-muted">{m.intervalMinutes} dk</td>
+                    <td className="py-3 pr-4 text-clouda-muted">
+                      {m.lastCheckedAt ? m.lastCheckedAt.toLocaleString("tr-TR") : "—"}
+                    </td>
+                    <td className="py-3 pr-4">
+                      {m.active ? (
+                        <span className="rounded-btn bg-clouda-indigoSoft px-2.5 py-1 text-xs font-medium text-clouda-indigo">
+                          Aktif
+                        </span>
+                      ) : (
+                        <span className="rounded-btn border border-clouda-border px-2.5 py-1 text-xs text-clouda-muted">
+                          Duraklatıldı
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 

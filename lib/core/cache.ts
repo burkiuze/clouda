@@ -35,8 +35,55 @@ export interface CacheHit<T> {
   ageSeconds: number;
 }
 
+/**
+ * A small per-instance cache in front of the database one.
+ *
+ * The row read is fast but it is still a network round trip, and on a warm
+ * lambda serving the same popular query repeatedly that trip is the entire
+ * response time. This layer answers those in microseconds. It is deliberately
+ * tiny and unshared: it accelerates repeats on one instance and nothing else,
+ * with the database remaining the real cache.
+ */
+const MEMORY_MAX = 200;
+const memory = new Map<string, { payload: unknown; storedAt: number; expiresAt: number }>();
+
+function memoryGet(key: string): { payload: unknown; storedAt: number } | null {
+  const entry = memory.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    memory.delete(key);
+    return null;
+  }
+  // Refresh recency for the LRU eviction below.
+  memory.delete(key);
+  memory.set(key, entry);
+  return entry;
+}
+
+function memorySet(key: string, payload: unknown, expiresAt: number, storedAt: number): void {
+  memory.set(key, { payload, storedAt, expiresAt });
+  while (memory.size > MEMORY_MAX) {
+    const oldest = memory.keys().next().value;
+    if (oldest === undefined) break;
+    memory.delete(oldest);
+  }
+}
+
 export async function cacheGet<T>(lookup: CacheLookup): Promise<CacheHit<T> | null> {
   const key = cacheKey(lookup);
+
+  // The freshness contract is checked against the stored row below; entries
+  // held in memory carry their own expiry and are only used for lookups that
+  // did not ask for a narrower window than the entry was produced under.
+  if (lookup.freshnessHours == null) {
+    const local = memoryGet(key);
+    if (local) {
+      return {
+        payload: local.payload as T,
+        ageSeconds: Math.round((Date.now() - local.storedAt) / 1000),
+      };
+    }
+  }
 
   try {
     const row = await prisma.searchCache.findUnique({ where: { cacheKey: key } });
@@ -58,6 +105,10 @@ export async function cacheGet<T>(lookup: CacheLookup): Promise<CacheHit<T> | nu
       .update({ where: { id: row.id }, data: { hits: { increment: 1 } } })
       .catch(() => {});
 
+    if (lookup.freshnessHours == null) {
+      memorySet(key, row.payload, row.expiresAt.getTime(), row.createdAt.getTime());
+    }
+
     return {
       payload: row.payload as T,
       ageSeconds: Math.round((Date.now() - row.createdAt.getTime()) / 1000),
@@ -75,6 +126,10 @@ export async function cacheSet<T>(
 ): Promise<void> {
   const key = cacheKey(lookup);
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+
+  if (lookup.freshnessHours == null) {
+    memorySet(key, payload, expiresAt.getTime(), Date.now());
+  }
 
   try {
     await prisma.searchCache.upsert({

@@ -152,7 +152,7 @@ export async function fetchAndExtract(
   try {
     const res = await safeFetch(url, {
       policy: options.policy,
-      timeoutMs: options.timeoutMs ?? 6000,
+      timeoutMs: options.timeoutMs ?? 3500,
       headers: { Accept: "text/html,application/xhtml+xml" },
     });
     if (!res.contentType.includes("html") && !res.contentType.includes("text/plain")) return null;

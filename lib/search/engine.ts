@@ -31,7 +31,20 @@ export const DEFAULT_LOCALE = "tr-TR";
  * the cache contract so a "last hour" request never gets a day-old row.
  */
 
-const MAX_ENRICH_CONCURRENCY = 8;
+/**
+ * Latency budget.
+ *
+ * Nearly all of a search's wall clock is spent waiting on other people's
+ * servers, so the only real levers are how many of them we wait for and how
+ * long we are willing to wait. Every candidate used to be downloaded before
+ * ranking, which meant paying for a dozen page fetches to publish six results.
+ * Candidates are now ranked on title and snippet first — signals the providers
+ * already gave us, costing nothing — and only the survivors are fetched.
+ */
+const MAX_ENRICH_CONCURRENCY = 12;
+
+/** Pages fetched beyond the requested count, as insurance against dead links. */
+const ENRICH_HEADROOM = 3;
 
 /**
  * Providers are asked for more than the caller wants. Deduplication, the
@@ -40,6 +53,32 @@ const MAX_ENRICH_CONCURRENCY = 8;
  */
 const CANDIDATE_MULTIPLIER = 2;
 const MIN_CANDIDATES = 10;
+
+/**
+ * Cheap pre-ranking over what a provider already told us. Deliberately crude:
+ * its only job is to decide which candidates are worth a network round trip,
+ * after which the real scorer runs on the full page text.
+ */
+function preScore(result: RawResult, plan: QueryPlan): number {
+  const terms = plan.optimized
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+  if (terms.length === 0) return 0.5;
+
+  const title = result.title.toLowerCase();
+  const snippet = (result.snippet ?? "").toLowerCase();
+
+  let score = 0;
+  for (const term of terms) {
+    if (title.includes(term)) score += 0.6 / terms.length;
+    else if (snippet.includes(term)) score += 0.4 / terms.length;
+  }
+
+  // An exact phrase in the title is the strongest cheap signal available.
+  if (title.includes(plan.optimized.toLowerCase())) score += 0.3;
+  return score;
+}
 
 /** Canonical form of a URL, so the same page from two indexes counts once. */
 function urlKey(raw: string): string {
@@ -297,11 +336,13 @@ export async function searchWeb(
     degraded,
   } = await discover(plan, candidateCount, locale, freshnessHours);
 
-  // Score the whole candidate pool, not the first maxResults of it. Cutting
-  // here was self-defeating: the extra candidates were fetched precisely so
-  // that ranking could choose among them, and truncating first meant a better
-  // result sitting at position 11 could never displace a worse one at 3.
-  const raw = candidates;
+  // Rank the whole candidate pool on the free signals, then fetch only the
+  // head of it. Cutting the pool before ranking wasted the extra candidates;
+  // fetching all of them wasted the caller's time. Ordering first and fetching
+  // second keeps the choice and drops the cost.
+  const raw = [...candidates]
+    .sort((a, b) => preScore(b, plan) - preScore(a, plan))
+    .slice(0, maxResults + ENRICH_HEADROOM);
 
   if (raw.length === 0) {
     return {

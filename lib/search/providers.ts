@@ -35,7 +35,9 @@ export interface Provider {
   ): Promise<RawResult[]>;
 }
 
-const PROVIDER_TIMEOUT = 7000;
+// A source that has not answered in three seconds is holding up every other
+// source in the fan-out; its contribution is not worth the wait.
+const PROVIDER_TIMEOUT = 3000;
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T | null> {
   try {
