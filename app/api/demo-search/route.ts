@@ -51,6 +51,9 @@ async function runDemoSearch(req: NextRequest, query: string | undefined) {
       took_ms: result.tookMs,
       source: result.provider,
       cached: result.cacheHit,
+      // Which sources declined to answer, so a thin result set can be
+      // explained rather than guessed at.
+      degraded: result.degraded,
     });
   } catch (err) {
     const error = toCloudaError(err);
