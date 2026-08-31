@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { hashApiKey } from "@/lib/apiKey";
 import { CloudaError, toCloudaError } from "@/lib/core/errors";
 import { recordUsage, Operation } from "@/lib/core/metrics";
+import { recordSecurityEvent } from "@/lib/core/audit";
 import { Capability } from "@/lib/constants";
 import type { DomainPolicy } from "@/lib/core/security";
 
@@ -53,6 +54,17 @@ async function resolveKey(req: NextRequest): Promise<ApiContext> {
   if (!apiKey) throw new CloudaError("invalid_api_key", "API anahtarı geçersiz.");
   if (apiKey.revoked) throw new CloudaError("revoked_api_key", "Bu API anahtarı iptal edilmiş.");
 
+  // A key with an expiry stops working on its own, so one that leaks into a
+  // log or a repository has a bounded blast radius even if nobody notices.
+  if (apiKey.expiresAt && apiKey.expiresAt.getTime() <= Date.now()) {
+    await recordSecurityEvent({
+      kind: "key_expired_use",
+      userId: apiKey.userId,
+      detail: apiKey.keyPrefix,
+    });
+    throw new CloudaError("revoked_api_key", "Bu API anahtarının süresi dolmuş.");
+  }
+
   return {
     userId: apiKey.userId,
     apiKeyId: apiKey.id,
@@ -87,40 +99,68 @@ async function enforceRateLimit(ctx: ApiContext): Promise<void> {
   }
 }
 
-async function enforceBudget(ctx: ApiContext, estimate: number): Promise<void> {
-  if (ctx.credits < estimate) {
-    throw new CloudaError(
-      "insufficient_credits",
-      `Bu işlem yaklaşık ${estimate} kredi gerektiriyor, bakiyen ${ctx.credits}.`,
-      { required: estimate, available: ctx.credits }
-    );
-  }
+/**
+ * Takes the worst-case cost out of the balance before the handler runs.
+ *
+ * Checking the balance and then spending it are two statements, and between
+ * them any number of concurrent requests can read the same balance and all
+ * decide they can afford it — the account then goes negative by however many
+ * lambdas were in flight. Both updates below are guarded in their own WHERE
+ * clause, so the database decides who gets the last credit, and a row count of
+ * zero is the refusal. Whatever the operation does not spend is refunded.
+ */
+async function reserve(ctx: ApiContext, estimate: number): Promise<void> {
+  if (estimate <= 0) return;
 
-  const key = await prisma.apiKey.findUnique({
-    where: { id: ctx.apiKeyId },
-    select: { creditCap: true, creditsSpent: true },
+  await prisma.$transaction(async (tx) => {
+    const debited = await tx.$executeRaw`
+      UPDATE "User" SET credits = credits - ${estimate}
+      WHERE id = ${ctx.userId} AND credits >= ${estimate}
+    `;
+
+    if (debited === 0) {
+      throw new CloudaError(
+        "insufficient_credits",
+        `Bu işlem yaklaşık ${estimate} kredi gerektiriyor, bakiyen ${ctx.credits}.`,
+        { required: estimate, available: ctx.credits }
+      );
+    }
+
+    const charged = await tx.$executeRaw`
+      UPDATE "ApiKey"
+      SET "creditsSpent" = "creditsSpent" + ${estimate}, "lastUsedAt" = now()
+      WHERE id = ${ctx.apiKeyId}
+        AND ("creditCap" IS NULL OR "creditsSpent" + ${estimate} <= "creditCap")
+    `;
+
+    if (charged === 0) {
+      // Rolls back the debit above with it.
+      throw new CloudaError(
+        "credit_cap_reached",
+        "Bu anahtar için tanımlı kredi sınırına ulaşıldı."
+      );
+    }
   });
-
-  if (key?.creditCap != null && key.creditsSpent + estimate > key.creditCap) {
-    throw new CloudaError(
-      "credit_cap_reached",
-      `Bu anahtar için tanımlı ${key.creditCap} kredilik sınıra ulaşıldı.`,
-      { cap: key.creditCap, spent: key.creditsSpent }
-    );
-  }
 }
 
-async function settle(ctx: ApiContext, credits: number): Promise<number> {
-  if (credits <= 0) return ctx.credits;
+/** Returns unspent credits and reports the resulting balance. */
+async function refund(ctx: ApiContext, amount: number): Promise<number> {
+  if (amount <= 0) {
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { credits: true },
+    });
+    return user?.credits ?? 0;
+  }
 
   const [, user] = await prisma.$transaction([
     prisma.apiKey.update({
       where: { id: ctx.apiKeyId },
-      data: { lastUsedAt: new Date(), creditsSpent: { increment: credits } },
+      data: { creditsSpent: { decrement: amount } },
     }),
     prisma.user.update({
       where: { id: ctx.userId },
-      data: { credits: { decrement: credits } },
+      data: { credits: { increment: amount } },
     }),
   ]);
 
@@ -146,6 +186,7 @@ export function withApi(
   return async (req: NextRequest): Promise<NextResponse> => {
     const started = Date.now();
     let ctx: ApiContext | null = null;
+    let reserved = 0;
 
     try {
       ctx = await resolveKey(req);
@@ -159,10 +200,13 @@ export function withApi(
       }
 
       await enforceRateLimit(ctx);
-      await enforceBudget(ctx, options.estimateCredits);
+
+      await reserve(ctx, options.estimateCredits);
+      reserved = options.estimateCredits;
 
       const result = await handler(req, ctx);
-      const remaining = await settle(ctx, result.creditsUsed);
+      const remaining = await refund(ctx, reserved - result.creditsUsed);
+      reserved = 0;
       const latencyMs = Date.now() - started;
 
       await recordUsage({
@@ -196,6 +240,16 @@ export function withApi(
     } catch (err) {
       const error = toCloudaError(err);
       const latencyMs = Date.now() - started;
+
+      // A failed operation is not charged for, so anything still held from the
+      // up-front reservation goes back.
+      if (ctx && reserved > 0) {
+        try {
+          await refund(ctx, reserved);
+        } catch {
+          // Refunding is best effort; the error below is the real answer.
+        }
+      }
 
       if (ctx) {
         await recordUsage({

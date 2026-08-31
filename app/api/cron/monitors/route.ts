@@ -4,6 +4,7 @@ import { checkMonitor, dueMonitors } from "@/lib/monitor/watcher";
 import { cacheInvalidate } from "@/lib/core/cache";
 import { CREDITS } from "@/lib/constants";
 import { recordUsage } from "@/lib/core/metrics";
+import { purgeExpired } from "@/lib/core/limits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -77,13 +78,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Piggyback cache housekeeping on the same sweep.
+  // Piggyback housekeeping on the same sweep: expired cache rows and the
+  // rate-limit windows that have already rolled over.
   const purged = await cacheInvalidate();
+  const limitRowsPurged = await purgeExpired().catch(() => 0);
 
   return NextResponse.json({
     checked: monitors.length,
     outcomes,
     cache_rows_purged: purged,
+    rate_limit_rows_purged: limitRowsPurged,
     took_ms: Date.now() - started,
   });
 }

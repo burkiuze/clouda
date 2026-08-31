@@ -67,14 +67,19 @@ model VerificationToken {
 }
 
 model ApiKey {
-  id         String    @id @default(cuid())
-  userId     String
-  name       String
-  keyHash    String    @unique
-  keyPrefix  String
-  revoked    Boolean   @default(false)
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id            String    @id @default(cuid())
+  userId        String
+  name          String
+  keyHash       String    @unique
+  keyPrefix     String
+  revoked       Boolean   @default(false)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  /// Optional expiry. A key past this moment is refused like a revoked one, so
+  /// a leaked key stops working even if nobody notices to revoke it.
+  expiresAt     DateTime?
+  /// Shared secret used to sign this key's monitor webhooks.
+  webhookSecret String?
 
   /// Opt-in features for this key. Web search is always available and is not
   /// listed here; everything else has to be granted explicitly.
@@ -128,15 +133,15 @@ model UsageLog {
 /// nothing. Rows carry their own expiry; a request asking for fresher data
 /// than a row can offer bypasses it.
 model SearchCache {
-  id          String   @id @default(cuid())
-  cacheKey    String   @unique
-  query       String
-  payload     Json
+  id         String   @id @default(cuid())
+  cacheKey   String   @unique
+  query      String
+  payload    Json
   /// Freshness window the cached payload was produced under, in hours.
-  freshnessH  Int?
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime
-  hits        Int      @default(0)
+  freshnessH Int?
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  hits       Int      @default(0)
 
   @@index([expiresAt])
 }
@@ -201,4 +206,34 @@ model MonitorEvent {
   monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@index([monitorId])
+}
+
+/// Fixed-window counter shared by every serverless instance. In-memory limits
+/// are meaningless on Vercel — each lambda gets its own heap, so an attacker
+/// only has to spread requests across cold starts to bypass them entirely.
+model RateLimit {
+  /// "<action>:<subject>:<window start epoch>", e.g. "register:ip:1.2.3.4:29803460".
+  id        String   @id
+  count     Int      @default(0)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+/// Append-only trail of security-relevant events, kept separate from UsageLog
+/// so that throttling and account activity stay readable when usage is noisy.
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  /// "login_failed" | "login_locked" | "signup" | "signup_throttled" |
+  /// "key_created" | "key_revoked" | "rate_limited" | "auth_link_blocked"
+  kind      String
+  /// Set when the actor is a known account.
+  userId    String?
+  /// Truncated identifier for the caller: hashed IP, never the raw address.
+  actorHash String?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@index([userId, createdAt])
 }

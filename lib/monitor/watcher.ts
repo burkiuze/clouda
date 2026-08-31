@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, createHmac } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { safeFetch } from "@/lib/core/http";
 import { parsePage } from "@/lib/search/extract";
@@ -156,16 +156,35 @@ async function checkQueryMonitor(
 
 async function deliverWebhook(
   webhookUrl: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  secret?: string | null
 ): Promise<boolean> {
   try {
+    const payload = JSON.stringify(body);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "User-Agent": "CloudaWebhook/1.0",
+    };
+
+    // An unsigned callback is an unauthenticated POST: anyone who learns the
+    // URL can forge change notifications into the receiver. The timestamp is
+    // inside the signed string so a captured body cannot be replayed later.
+    if (secret) {
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const signature = createHmac("sha256", secret)
+        .update(`${timestamp}.${payload}`)
+        .digest("hex");
+      headers["X-Clouda-Timestamp"] = timestamp;
+      headers["X-Clouda-Signature"] = `v1=${signature}`;
+    }
+
     // Webhook targets are caller-supplied, so they go through the same
     // SSRF policy as any other outbound request.
     const res = await safeFetch(webhookUrl, {
       method: "POST",
       timeoutMs: 8000,
-      headers: { "Content-Type": "application/json", "User-Agent": "CloudaWebhook/1.0" },
-      body: JSON.stringify(body),
+      headers,
+      body: payload,
     });
     return res.status < 400;
   } catch {
@@ -180,7 +199,7 @@ export interface MonitorRecord {
   webhookUrl: string | null;
   lastHash: string | null;
   lastSnapshot: string | null;
-  apiKey: { allowedDomains: string[]; blockedDomains: string[] };
+  apiKey: { allowedDomains: string[]; blockedDomains: string[]; webhookSecret?: string | null };
 }
 
 /** Runs one monitor and persists whatever it found. */
@@ -231,7 +250,7 @@ export async function checkMonitor(monitor: MonitorRecord): Promise<CheckOutcome
       target: monitor.target,
       occurred_at: event.createdAt.toISOString(),
       data: eventPayload,
-    });
+    }, monitor.apiKey.webhookSecret);
     if (delivered) {
       await prisma.monitorEvent.update({ where: { id: event.id }, data: { delivered: true } });
     }
@@ -255,7 +274,7 @@ export async function dueMonitors(limit = 20): Promise<MonitorRecord[]> {
       lastSnapshot: true,
       intervalMinutes: true,
       lastCheckedAt: true,
-      apiKey: { select: { allowedDomains: true, blockedDomains: true } },
+      apiKey: { select: { allowedDomains: true, blockedDomains: true, webhookSecret: true } },
     },
   });
 

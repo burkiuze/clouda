@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateApiKey } from "@/lib/apiKey";
+import { generateApiKey, generateWebhookSecret } from "@/lib/apiKey";
 import { CAPABILITIES, type Capability } from "@/lib/constants";
+import { consume, LIMITS } from "@/lib/core/limits";
+import { recordSecurityEvent } from "@/lib/core/audit";
 
 export const dynamic = "force-dynamic";
+
+/** Ceiling on live keys per account, so a compromised session cannot mint thousands. */
+const MAX_ACTIVE_KEYS = 25;
 
 export async function GET() {
   const session = await auth();
@@ -26,6 +31,7 @@ export async function GET() {
       allowedDomains: true,
       lastUsedAt: true,
       createdAt: true,
+      expiresAt: true,
     },
   });
   return NextResponse.json({ keys });
@@ -54,6 +60,25 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const userId = (session.user as typeof session.user & { id: string }).id;
+
+  const burst = await consume(LIMITS.keyCreate, userId);
+  if (!burst.allowed) {
+    return NextResponse.json(
+      { message: "Çok fazla anahtar oluşturdun. Biraz sonra tekrar dene." },
+      { status: 429, headers: { "Retry-After": String(burst.retryAfter) } }
+    );
+  }
+
+  const activeKeys = await prisma.apiKey.count({ where: { userId, revoked: false } });
+  if (activeKeys >= MAX_ACTIVE_KEYS) {
+    return NextResponse.json(
+      {
+        message: `En fazla ${MAX_ACTIVE_KEYS} aktif anahtarın olabilir. Kullanmadıklarını iptal et.`,
+      },
+      { status: 409 }
+    );
+  }
+
   const body = await req.json().catch(() => ({}));
 
   const name =
@@ -67,6 +92,14 @@ export async function POST(req: NextRequest) {
   const capRaw = Number(body.creditCap);
   const creditCap = Number.isFinite(capRaw) && capRaw > 0 ? Math.round(capRaw) : null;
 
+  // Days until the key stops working. Bounded so "never expires" has to be
+  // chosen deliberately rather than arrived at by passing a huge number.
+  const daysRaw = Number(body.expiresInDays);
+  const expiresAt =
+    Number.isFinite(daysRaw) && daysRaw > 0
+      ? new Date(Date.now() + Math.min(365, Math.round(daysRaw)) * 86_400_000)
+      : null;
+
   const { plaintext, hash, prefix } = generateApiKey();
 
   const key = await prisma.apiKey.create({
@@ -78,19 +111,31 @@ export async function POST(req: NextRequest) {
       capabilities: sanitizeCapabilities(body.capabilities),
       rateLimitPerMin,
       creditCap,
+      expiresAt,
+      webhookSecret: generateWebhookSecret(),
       allowedDomains: sanitizeDomains(body.allowedDomains),
       blockedDomains: sanitizeDomains(body.blockedDomains),
     },
   });
 
+  await recordSecurityEvent({
+    kind: "key_created",
+    userId,
+    detail: `${key.name} (${key.keyPrefix})`,
+  });
+
   return NextResponse.json({
     id: key.id,
     name: key.name,
+    // Shown once and never stored in the clear; the row keeps only the hash.
     key: plaintext,
     prefix: key.keyPrefix,
     capabilities: key.capabilities,
     rateLimitPerMin: key.rateLimitPerMin,
     creditCap: key.creditCap,
+    expiresAt: key.expiresAt,
+    // Lets the caller verify the signature on this key's monitor webhooks.
+    webhookSecret: key.webhookSecret,
     createdAt: key.createdAt,
   });
 }

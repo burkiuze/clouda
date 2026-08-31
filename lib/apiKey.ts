@@ -12,3 +12,12 @@ export function generateApiKey(): { plaintext: string; hash: string; prefix: str
 export function hashApiKey(plaintext: string): string {
   return createHash("sha256").update(plaintext).digest("hex");
 }
+
+/**
+ * Secret used to sign this key's outbound webhooks. Without one, a monitor
+ * callback is just an unauthenticated POST: anyone who learns the URL can
+ * forge change notifications into the customer's system.
+ */
+export function generateWebhookSecret(): string {
+  return `whsec_${randomBytes(24).toString("base64url")}`;
+}

@@ -45,6 +45,9 @@ export const CREDITS = {
   browsePerStep: 5,
   monitorCheck: 5,
   citations: 10,
+  /** Extraction is one fetch per URL and no discovery, so it is cheaper than search. */
+  extractBase: 2,
+  extractPerUrl: 3,
 } as const;
 
 /** Backwards-compatible alias used by the dashboard and marketing copy. */

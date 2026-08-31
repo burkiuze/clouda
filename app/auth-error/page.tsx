@@ -8,7 +8,16 @@ const messages: Record<string, string> = {
   Configuration: "Sunucu yapılandırmasında eksik var.",
   AccessDenied: "Bu hesapla girişe izin verilmedi.",
   Verification: "Doğrulama bağlantısı geçersiz ya da süresi dolmuş.",
+  OAuthAccountNotLinked:
+    "Bu e-posta adresiyle zaten şifreli bir hesap var. Önce e-posta ve şifrenle giriş yap.",
 };
+
+/**
+ * The unlinked-account case is a deliberate refusal, not a fault: linking a
+ * Google account to an existing password account by email alone would let
+ * anyone who registered someone else's address inherit their sign-in.
+ */
+const EXPLAINED = new Set(["OAuthAccountNotLinked"]);
 
 export default async function AuthErrorPage({
   searchParams,
@@ -26,7 +35,7 @@ export default async function AuthErrorPage({
         {messages[error ?? ""] ?? "Beklenmeyen bir hata oluştu."}
       </p>
 
-      {missing.length > 0 && (
+      {missing.length > 0 && !EXPLAINED.has(error ?? "") && (
         <div className="mt-6 rounded-card border border-clouda-border bg-white p-5">
           <p className="text-sm font-medium text-clouda-ink">
             Vercel&apos;de şu ortam değişkenleri eksik:

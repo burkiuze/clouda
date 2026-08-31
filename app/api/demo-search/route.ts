@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchWeb } from "@/lib/search/engine";
-import { rateLimit } from "@/lib/rateLimit";
+import { consume, LIMITS } from "@/lib/core/limits";
+import { requestActor } from "@/lib/core/request";
+import { recordSecurityEvent } from "@/lib/core/audit";
 import { toCloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
@@ -10,12 +12,19 @@ const MAX_QUERY_LENGTH = 200;
 
 /** Public demo behind the landing page. No key, no credits, tight limits. */
 async function runDemoSearch(req: NextRequest, query: string | undefined) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
-
-  if (!rateLimit(`demo:${ip}`, 5, 60_000)) {
+  // A demo search fans out to several providers and fetches pages, so it is
+  // the most expensive unauthenticated thing on the site. The counter is
+  // shared across instances; the old per-process one reset on every cold start.
+  const actor = requestActor(req);
+  const verdict = await consume(LIMITS.demoSearch, actor);
+  if (!verdict.allowed) {
+    await recordSecurityEvent({ kind: "demo_throttled", actorHash: actor });
     return NextResponse.json(
-      { error: "rate_limited", message: "Çok fazla deneme arama yaptın, bir dakika sonra tekrar dene." },
-      { status: 429 }
+      {
+        error: "rate_limited",
+        message: "Çok fazla deneme arama yaptın, birazdan tekrar dene.",
+      },
+      { status: 429, headers: { "Retry-After": String(verdict.retryAfter) } }
     );
   }
 
