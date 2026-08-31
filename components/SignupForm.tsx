@@ -32,7 +32,10 @@ export default function SignupForm() {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      setError(data.message ?? "Kayıt tamamlanamadı, tekrar dene.");
+      setError(
+        data.message ??
+          `Kayıt tamamlanamadı (${data.error ?? res.status}). Sorun sürerse yöneticiye bildir.`
+      );
       setLoading(false);
       return;
     }

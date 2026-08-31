@@ -2,12 +2,31 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { SIGNUP_FREE_CREDITS } from "@/lib/constants";
+import { CloudaError, toCloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
+  try {
+    return await register(req);
+  } catch (err) {
+    const error = toCloudaError(err);
+    return NextResponse.json(error.toJSON(), { status: error.status });
+  }
+}
+
+async function register(req: NextRequest) {
+  // Without a database there is nowhere to put the account; say so plainly
+  // rather than failing deeper with an opaque driver error.
+  if (!process.env.DATABASE_URL) {
+    throw new CloudaError(
+      "database_unavailable",
+      "Veritabanı bağlı değil. Vercel'de DATABASE_URL tanımlanmadan kayıt oluşturulamaz."
+    );
+  }
+
   let body: {
     name?: string;
     email?: string;

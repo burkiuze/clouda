@@ -19,7 +19,11 @@ export default function LoginForm() {
     const res = await signIn("credentials", { email, password, redirect: false });
 
     if (res?.error) {
-      setError("E-posta ya da şifre hatalı.");
+      setError(
+        res.error === "Configuration"
+          ? "Sunucu yapılandırması eksik (veritabanı ya da NEXTAUTH_SECRET). Yöneticiye bildir."
+          : "E-posta ya da şifre hatalı."
+      );
       setLoading(false);
       return;
     }

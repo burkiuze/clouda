@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { toCloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  try {
+    return await setAccountType(req);
+  } catch (err) {
+    const error = toCloudaError(err);
+    return NextResponse.json(error.toJSON(), { status: error.status });
+  }
+}
+
+async function setAccountType(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
