@@ -41,7 +41,7 @@ function resolveResultUrl(href: string): string {
   }
 }
 
-async function fetchSerp(query: string, maxResults: number): Promise<SearchResult[]> {
+async function fetchSerpHtml(query: string, maxResults: number): Promise<SearchResult[]> {
   const { signal, cancel } = withTimeout(FETCH_TIMEOUT_MS);
   try {
     const res = await fetch("https://html.duckduckgo.com/html/", {
@@ -75,6 +75,52 @@ async function fetchSerp(query: string, maxResults: number): Promise<SearchResul
   } finally {
     cancel();
   }
+}
+
+/**
+ * The lite endpoint returns a plain table of links. It is served by different
+ * infrastructure than the html one, so it often answers when that one has
+ * rate-limited the caller's IP range.
+ */
+async function fetchSerpLite(query: string, maxResults: number): Promise<SearchResult[]> {
+  const { signal, cancel } = withTimeout(FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch("https://lite.duckduckgo.com/lite/", {
+      method: "POST",
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ q: query }).toString(),
+      signal,
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const results: SearchResult[] = [];
+    $("a.result-link").each((_, el) => {
+      if (results.length >= maxResults) return;
+      const title = $(el).text().trim();
+      const rawHref = $(el).attr("href");
+      if (!title || !rawHref) return;
+      const url = resolveResultUrl(rawHref);
+      if (!/^https?:\/\//.test(url)) return;
+      const snippet = $(el).closest("tr").next("tr").find(".result-snippet").text().trim();
+      results.push({ title, url, snippet, content: "" });
+    });
+    return results;
+  } catch {
+    return [];
+  } finally {
+    cancel();
+  }
+}
+
+async function fetchSerp(query: string, maxResults: number): Promise<SearchResult[]> {
+  const primary = await fetchSerpHtml(query, maxResults);
+  if (primary.length > 0) return primary;
+  return fetchSerpLite(query, maxResults);
 }
 
 function extractReadableText($: cheerio.CheerioAPI): string {

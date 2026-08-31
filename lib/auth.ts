@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
+import { SIGNUP_FREE_CREDITS } from "@/lib/constants";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -16,6 +17,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/login",
+  },
+  events: {
+    // The schema default covers the usual case; this keeps the grant correct
+    // when SIGNUP_FREE_CREDITS is overridden.
+    async createUser({ user }) {
+      if (user.id && SIGNUP_FREE_CREDITS !== 2000) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { credits: SIGNUP_FREE_CREDITS },
+        });
+      }
+    },
   },
   callbacks: {
     async session({ session, user }) {

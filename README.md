@@ -29,13 +29,9 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
 
 1. **Veritabanı** — Vercel projesinde **Storage** sekmesinden bir Postgres
    veritabanı oluştur (Neon/Vercel Postgres). Projeye bağladığında
-   `DATABASE_URL` otomatik eklenir. Sonra bir kere şunu çalıştırman gerekir
-   (tablo oluşturmak için):
-   ```bash
-   npx prisma migrate deploy
-   ```
-   (Vercel CLI ile `vercel env pull` yapıp yerelden, ya da bir CI adımından
-   çalıştırabilirsin.)
+   `DATABASE_URL` otomatik eklenir. Tabloları ayrıca oluşturman gerekmez:
+   `DATABASE_URL` tanımlıyken build sırasında `prisma migrate deploy`
+   otomatik çalışır (`scripts/migrate.mjs`), tanımlı değilken atlanır.
 
 2. **Google OAuth** — [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    üzerinden bir OAuth Client ID oluştur (Web application). Authorized
