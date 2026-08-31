@@ -2,8 +2,7 @@ import Link from "next/link";
 import Logo from "./Logo";
 
 /**
- * Split auth screen: the form sits on the left, a full-bleed photograph
- * fills the right half on wide viewports.
+ * Split auth screen: the form on the left, a quiet panel on the right.
  */
 export default function AuthLayout({
   children,
@@ -27,14 +26,8 @@ export default function AuthLayout({
         </div>
       </div>
 
-      <div className="relative hidden lg:block lg:w-1/2">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url(/auth.jpg)" }}
-          aria-hidden="true"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-        <p className="absolute bottom-12 left-12 right-12 font-serif text-2xl leading-snug text-white">
+      <div className="relative hidden border-l border-clouda-border bg-clouda-panel lg:block lg:w-1/2">
+        <p className="absolute bottom-14 left-14 right-14 font-serif text-2xl leading-snug text-clouda-ink/70">
           {quote}
         </p>
       </div>

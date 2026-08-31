@@ -74,6 +74,10 @@ export default async function DashboardPage() {
               name: k.name,
               keyPrefix: k.keyPrefix,
               revoked: k.revoked,
+              capabilities: k.capabilities,
+              rateLimitPerMin: k.rateLimitPerMin,
+              creditCap: k.creditCap,
+              creditsSpent: k.creditsSpent,
               lastUsedAt: k.lastUsedAt ? k.lastUsedAt.toISOString() : null,
               createdAt: k.createdAt.toISOString(),
             }))}
@@ -86,6 +90,7 @@ export default async function DashboardPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-clouda-border">
+                  <th className="eyebrow-plain pb-3">İşlem</th>
                   <th className="eyebrow-plain pb-3">Sorgu</th>
                   <th className="eyebrow-plain pb-3">Sonuç</th>
                   <th className="eyebrow-plain pb-3">Kredi</th>
@@ -95,13 +100,14 @@ export default async function DashboardPage() {
               <tbody>
                 {usageLogs.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-8 text-center text-clouda-muted">
+                    <td colSpan={5} className="py-8 text-center text-clouda-muted">
                       Henüz kullanım kaydı yok.
                     </td>
                   </tr>
                 )}
                 {usageLogs.map((log) => (
                   <tr key={log.id} className="border-b border-clouda-border last:border-0">
+                    <td className="py-3.5 pr-4 font-mono text-xs text-clouda-indigo">{log.operation}</td>
                     <td className="max-w-xs truncate py-3.5 pr-4 text-clouda-ink">{log.query}</td>
                     <td className="py-3.5 pr-4 text-clouda-muted">{log.resultCount}</td>
                     <td className="py-3.5 pr-4 text-clouda-indigo">-{log.creditsUsed}</td>

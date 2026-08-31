@@ -1,92 +1,82 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { hashApiKey } from "@/lib/apiKey";
-import { searchWeb, DEFAULT_LOCALE } from "@/lib/search/engine";
-import { CREDITS_PER_SEARCH } from "@/lib/constants";
+import { NextRequest } from "next/server";
+import { withApi, readJson } from "@/lib/api/gateway";
+import { parseFreshness, parseLocale, parseInt_, parseMode, shapeResult } from "@/lib/api/shapes";
+import { searchWeb } from "@/lib/search/engine";
+import { verifyClaims } from "@/lib/research/citations";
+import { CREDITS } from "@/lib/constants";
+import { CloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
-
-  if (!token) {
-    return NextResponse.json(
-      { error: "missing_api_key", message: "Provide 'Authorization: Bearer cld_live_...'" },
-      { status: 401 }
-    );
-  }
-
-  const keyHash = hashApiKey(token);
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { keyHash },
-    include: { user: true },
-  });
-
-  if (!apiKey || apiKey.revoked) {
-    return NextResponse.json({ error: "invalid_api_key" }, { status: 401 });
-  }
-
-  let body: { query?: string; max_results?: number; locale?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json_body" }, { status: 400 });
-  }
-
-  const query = body.query?.trim();
-  if (!query) {
-    return NextResponse.json(
-      { error: "missing_query", message: "Body must include a non-empty 'query' string." },
-      { status: 400 }
-    );
-  }
-
-  const maxResults = Math.min(Math.max(Number(body.max_results) || 5, 1), 10);
-  const locale =
-    typeof body.locale === "string" && /^[a-z]{2}(-[A-Z]{2})?$/.test(body.locale)
-      ? body.locale
-      : DEFAULT_LOCALE;
-
-  if (apiKey.user.credits < CREDITS_PER_SEARCH) {
-    return NextResponse.json(
-      {
-        error: "insufficient_credits",
-        message: `This search costs ${CREDITS_PER_SEARCH} credits, but you have ${apiKey.user.credits}.`,
-        credits_remaining: apiKey.user.credits,
-      },
-      { status: 402 }
-    );
-  }
-
-  const result = await searchWeb(query, { maxResults, locale });
-
-  const [, , updatedUser] = await prisma.$transaction([
-    prisma.apiKey.update({
-      where: { id: apiKey.id },
-      data: { lastUsedAt: new Date() },
-    }),
-    prisma.usageLog.create({
-      data: {
-        userId: apiKey.userId,
-        apiKeyId: apiKey.id,
-        query,
-        resultCount: result.results.length,
-        creditsUsed: CREDITS_PER_SEARCH,
-      },
-    }),
-    prisma.user.update({
-      where: { id: apiKey.userId },
-      data: { credits: { decrement: CREDITS_PER_SEARCH } },
-    }),
-  ]);
-
-  return NextResponse.json({
-    query: result.query,
-    results: result.results,
-    took_ms: result.tookMs,
-    source: result.source,
-    credits_used: CREDITS_PER_SEARCH,
-    credits_remaining: updatedUser.credits,
-  });
+interface SearchBody {
+  query?: string;
+  max_results?: number;
+  locale?: string;
+  freshness?: string | number;
+  include_content?: boolean;
+  no_cache?: boolean;
+  mode?: string;
 }
+
+/**
+ * POST /api/v1/search — the always-on capability. Every key can call this.
+ */
+export const POST = withApi(
+  { operation: "search", estimateCredits: CREDITS.search },
+  async (req: NextRequest, ctx) => {
+    const body = await readJson<SearchBody>(req);
+    const query = body.query?.trim();
+    if (!query) {
+      throw new CloudaError("invalid_request", "Gövde bir 'query' alanı içermeli.");
+    }
+
+    const mode = parseMode(body.mode, ["results", "sources", "claims"]);
+    // Claims mode reads source text, so it is priced with the citations add-on.
+    if (mode === "claims" && !ctx.capabilities.includes("citations")) {
+      throw new CloudaError(
+        "capability_not_enabled",
+        'Bu anahtarda "citations" özelliği açık değil. Panelden etkinleştirebilirsin.',
+        { capability: "citations" }
+      );
+    }
+
+    const result = await searchWeb(query, {
+      maxResults: parseInt_(body.max_results, 1, 30, 10),
+      locale: parseLocale(body.locale),
+      freshnessHours: parseFreshness(body.freshness),
+      includeContent: mode === "sources" ? false : body.include_content !== false,
+      noCache: body.no_cache === true,
+      domainPolicy: ctx.policy,
+    });
+
+    const creditsUsed =
+      CREDITS.search * (result.cacheHit ? 0 : 1) + (mode === "claims" ? CREDITS.citations : 0);
+
+    const payload: Record<string, unknown> = {
+      query: result.query,
+      mode,
+      intent: result.plan.intent,
+      freshness_applied: result.plan.needsFreshness,
+      results: result.results.map((r) => shapeResult(r, mode)),
+      provider: result.provider,
+      cached: result.cacheHit,
+      ...(result.degraded.length > 0 ? { degraded_providers: result.degraded } : {}),
+    };
+
+    if (mode === "claims") {
+      const verification = verifyClaims(result.results, { query });
+      payload.claims = verification.claims;
+      payload.contested_claims = verification.contested;
+    }
+
+    return {
+      body: payload,
+      creditsUsed,
+      resultCount: result.results.length,
+      provider: result.provider,
+      cacheHit: result.cacheHit,
+      label: query,
+    };
+  }
+);

@@ -1,452 +1,60 @@
-import * as cheerio from "cheerio";
+import { cacheGet, cacheSet, ttlForIntent } from "@/lib/core/cache";
+import { CloudaError } from "@/lib/core/errors";
 import { filterUnsafe } from "@/lib/search/safety";
+import { fetchAndExtract } from "@/lib/search/extract";
+import { planQuery } from "@/lib/search/query";
+import { scoreResult } from "@/lib/search/scoring";
+import {
+  configuredKeyedProvider,
+  KEYED_PROVIDERS,
+  openProvidersForIntent,
+  Provider,
+} from "@/lib/search/providers";
+import type {
+  QueryPlan,
+  RawResult,
+  SearchOptions,
+  SearchResponse,
+  SearchResult,
+} from "@/lib/search/types";
 
-export interface SearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-  content: string;
-}
-
-export interface SearchResponse {
-  query: string;
-  results: SearchResult[];
-  tookMs: number;
-  /** Which discovery source answered, useful when debugging upstream blocks. */
-  source: string;
-}
-
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-
-const FETCH_TIMEOUT_MS = 6000;
-const MAX_PAGE_BYTES = 1_500_000;
-const CONTENT_TRUNCATE = 2000;
-
-function withTimeout(ms: number) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return { signal: controller.signal, cancel: () => clearTimeout(timer) };
-}
-
-async function getText(url: string, init?: RequestInit): Promise<string | null> {
-  const { signal, cancel } = withTimeout(FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      ...init,
-      headers: { "User-Agent": USER_AGENT, ...(init?.headers ?? {}) },
-      signal,
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    cancel();
-  }
-}
-
-/**
- * Resolves redirect-wrapped result URLs (//duckduckgo.com/l/?uddg=...) down to
- * the real destination.
- */
-function resolveResultUrl(href: string, base = "https://duckduckgo.com"): string {
-  try {
-    const url = new URL(href, base);
-    const uddg = url.searchParams.get("uddg");
-    if (uddg) return decodeURIComponent(uddg);
-    return url.toString();
-  } catch {
-    return href;
-  }
-}
-
-/** BCP-47 market used to steer result language and region. */
 export const DEFAULT_LOCALE = "tr-TR";
 
-type Discovery = (query: string, maxResults: number, locale: string) => Promise<SearchResult[]>;
+/**
+ * The search pipeline, in four stages:
+ *
+ *   plan       classify intent, clean the query, decide on freshness
+ *   discover   keyed provider first, then the open providers merged together;
+ *              every failure is recorded rather than swallowed
+ *   enrich     fetch each result and extract readable text plus real dates
+ *   score      attach relevance/credibility/freshness/overall and re-rank
+ *
+ * Results are cached by normalised query, with the freshness window part of
+ * the cache contract so a "last hour" request never gets a day-old row.
+ */
 
-const duckDuckGoHtml: Discovery = async (query, maxResults) => {
-  const html = await getText("https://html.duckduckgo.com/html/", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ q: query }).toString(),
-  });
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const results: SearchResult[] = [];
-  $(".result").each((_, el) => {
-    if (results.length >= maxResults) return;
-    const titleEl = $(el).find(".result__a").first();
-    const title = titleEl.text().trim();
-    const rawHref = titleEl.attr("href");
-    if (!title || !rawHref) return;
-    const url = resolveResultUrl(rawHref);
-    if (!/^https?:\/\//.test(url)) return;
-    results.push({
-      title,
-      url,
-      snippet: $(el).find(".result__snippet").text().trim(),
-      content: "",
-    });
-  });
-  return results;
-};
-
-const duckDuckGoLite: Discovery = async (query, maxResults) => {
-  const html = await getText("https://lite.duckduckgo.com/lite/", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ q: query }).toString(),
-  });
-  if (!html) return [];
-
-  const $ = cheerio.load(html);
-  const results: SearchResult[] = [];
-  $("a.result-link").each((_, el) => {
-    if (results.length >= maxResults) return;
-    const title = $(el).text().trim();
-    const rawHref = $(el).attr("href");
-    if (!title || !rawHref) return;
-    const url = resolveResultUrl(rawHref);
-    if (!/^https?:\/\//.test(url)) return;
-    results.push({
-      title,
-      url,
-      snippet: $(el).closest("tr").next("tr").find(".result-snippet").text().trim(),
-      content: "",
-    });
-  });
-  return results;
-};
+const MAX_ENRICH_CONCURRENCY = 8;
 
 /**
- * Keyed providers. Every free scraping route is blocked from cloud IP ranges
- * (DuckDuckGo and Mojeek serve bot checks, Brave rate-limits, Bing's RSS view
- * answers with results unrelated to the query), so a provider key is what makes
- * general web search dependable in production. Whichever key is configured is
- * tried first; without one the engine falls back to the open sources below.
+ * Providers are asked for more than the caller wants. Deduplication, the
+ * relevance gate and the freshness window all discard candidates, so a thin
+ * request would otherwise return fewer results than asked for.
  */
-const tavily: Discovery = async (query, maxResults) => {
-  const key = process.env.TAVILY_API_KEY;
-  if (!key) return [];
-  const body = await getText("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ query, max_results: maxResults, search_depth: "basic" }),
-  });
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as {
-      results?: { title?: string; url?: string; content?: string }[];
-    };
-    return (data.results ?? [])
-      .filter((r): r is { title: string; url: string; content?: string } =>
-        Boolean(r.title && r.url)
-      )
-      .slice(0, maxResults)
-      .map((r) => ({ title: r.title, url: r.url, snippet: r.content ?? "", content: "" }));
-  } catch {
-    return [];
-  }
-};
+const CANDIDATE_MULTIPLIER = 2;
+const MIN_CANDIDATES = 10;
 
-const brave: Discovery = async (query, maxResults, locale) => {
-  const key = process.env.BRAVE_SEARCH_API_KEY;
-  if (!key) return [];
-  const [lang, region] = locale.split("-");
-  const body = await getText(
-    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${maxResults}` +
-      `&safesearch=strict&search_lang=${lang}${region ? `&country=${region}` : ""}`,
-    { headers: { Accept: "application/json", "X-Subscription-Token": key } }
-  );
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as {
-      web?: { results?: { title?: string; url?: string; description?: string }[] };
-    };
-    return (data.web?.results ?? [])
-      .filter((r): r is { title: string; url: string; description?: string } =>
-        Boolean(r.title && r.url)
-      )
-      .slice(0, maxResults)
-      .map((r) => ({ title: r.title, url: r.url, snippet: r.description ?? "", content: "" }));
-  } catch {
-    return [];
-  }
-};
-
-const serper: Discovery = async (query, maxResults, locale) => {
-  const key = process.env.SERPER_API_KEY;
-  if (!key) return [];
-  const [lang, region] = locale.split("-");
-  const body = await getText("https://google.serper.dev/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-API-KEY": key },
-    body: JSON.stringify({ q: query, num: maxResults, hl: lang, gl: region?.toLowerCase() }),
-  });
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as {
-      organic?: { title?: string; link?: string; snippet?: string }[];
-    };
-    return (data.organic ?? [])
-      .filter((r): r is { title: string; link: string; snippet?: string } =>
-        Boolean(r.title && r.link)
-      )
-      .slice(0, maxResults)
-      .map((r) => ({ title: r.title, url: r.link, snippet: r.snippet ?? "", content: "" }));
-  } catch {
-    return [];
-  }
-};
-
-function parseRss(xml: string, maxResults: number): SearchResult[] {
-  const $ = cheerio.load(xml, { xml: true });
-  const results: SearchResult[] = [];
-  $("item").each((_, el) => {
-    if (results.length >= maxResults) return;
-    const title = $(el).find("title").first().text().trim();
-    const url = $(el).find("link").first().text().trim();
-    if (!title || !/^https?:\/\//.test(url)) return;
-    results.push({
-      title,
-      url,
-      snippet: $(el).find("description").first().text().replace(/<[^>]+>/g, "").trim(),
-      content: "",
-    });
-  });
-  return results;
-}
-
-/** News-shaped queries still deserve an answer when the general sources fail. */
-const googleNewsRss: Discovery = async (query, maxResults, locale) => {
-  const [lang, region = lang.toUpperCase()] = locale.split("-");
-  const xml = await getText(
-    `https://news.google.com/rss/search?q=${encodeURIComponent(
-      query
-    )}&hl=${lang}&gl=${region}&ceid=${region}:${lang}`
-  );
-  return xml ? parseRss(xml, maxResults) : [];
-};
-
-/** Last resort: an encyclopaedic answer beats an empty response. */
-const wikipedia: Discovery = async (query, maxResults, locale) => {
-  const primaryLang = locale.split("-")[0] || "en";
-  const langs = primaryLang === "en" ? ["en"] : [primaryLang, "en"];
-  const out: SearchResult[] = [];
-  for (const lang of langs) {
-    if (out.length >= maxResults) break;
-    const json = await getText(
-      `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-        query
-      )}&format=json&srlimit=${maxResults}`,
-      { headers: { "User-Agent": "Clouda/0.1 (web search API; hello@clouda.dev)" } }
-    );
-    if (!json) continue;
-    try {
-      const data = JSON.parse(json) as {
-        query?: { search?: { title: string; snippet: string }[] };
-      };
-      for (const hit of data.query?.search ?? []) {
-        if (out.length >= maxResults) break;
-        out.push({
-          title: hit.title,
-          url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g, "_"))}`,
-          snippet: hit.snippet.replace(/<[^>]+>/g, "").trim(),
-          content: "",
-        });
-      }
-    } catch {
-      // try the next language
-    }
-  }
-  return out;
-};
-
-// Keyed providers first (they no-op when their key is absent), then the open
-// sources. DuckDuckGo stays in the chain because it works from hosts outside
-// the cloud IP ranges it blocks; Wikipedia and Google News are the last resort
-// so an unkeyed deployment still answers encyclopaedic and news queries.
-/** Hacker News, via the Algolia index that backs its own search box. */
-const hackerNews: Discovery = async (query, maxResults) => {
-  const body = await getText(
-    `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&hitsPerPage=${maxResults}`
-  );
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as {
-      hits?: { title?: string; url?: string; objectID?: string; story_text?: string }[];
-    };
-    return (data.hits ?? [])
-      .filter((h) => h.title)
-      .slice(0, maxResults)
-      .map((h) => ({
-        title: h.title as string,
-        url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
-        snippet: (h.story_text ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
-        content: "",
-      }));
-  } catch {
-    return [];
-  }
-};
-
-/** Repository search, for the library- and tool-shaped queries agents ask. */
-const github: Discovery = async (query, maxResults) => {
-  const token = process.env.GITHUB_TOKEN;
-  const body = await getText(
-    `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&per_page=${maxResults}`,
-    {
-      headers: {
-        Accept: "application/vnd.github+json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    }
-  );
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as {
-      items?: { full_name?: string; html_url?: string; description?: string }[];
-    };
-    return (data.items ?? [])
-      .filter((r) => r.full_name && r.html_url)
-      .slice(0, maxResults)
-      .map((r) => ({
-        title: r.full_name as string,
-        url: r.html_url as string,
-        snippet: r.description ?? "",
-        content: "",
-      }));
-  } catch {
-    return [];
-  }
-};
-
-/** Stack Overflow answers, the other half of most developer questions. */
-const stackExchange: Discovery = async (query, maxResults) => {
-  const body = await getText(
-    `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(
-      query
-    )}&site=stackoverflow&pagesize=${maxResults}`
-  );
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as { items?: { title?: string; link?: string }[] };
-    return (data.items ?? [])
-      .filter((i) => i.title && i.link)
-      .slice(0, maxResults)
-      .map((i) => ({ title: i.title as string, url: i.link as string, snippet: "", content: "" }));
-  } catch {
-    return [];
-  }
-};
-
-/** Peer-reviewed literature, for research-shaped queries. */
-const crossref: Discovery = async (query, maxResults) => {
-  const body = await getText(
-    `https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=${maxResults}&select=title,URL,abstract`,
-    { headers: { "User-Agent": "Clouda/0.1 (mailto:hello@clouda.dev)" } }
-  );
-  if (!body) return [];
-  try {
-    const data = JSON.parse(body) as {
-      message?: { items?: { title?: string[]; URL?: string; abstract?: string }[] };
-    };
-    return (data.message?.items ?? [])
-      .filter((w) => w.title?.[0] && w.URL)
-      .slice(0, maxResults)
-      .map((w) => ({
-        title: (w.title as string[])[0],
-        url: w.URL as string,
-        snippet: (w.abstract ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
-        content: "",
-      }));
-  } catch {
-    return [];
-  }
-};
-
-/** Providers that need a key, tried in order; the first to answer wins. */
-const keyedSources: { name: string; discover: Discovery }[] = [
-  { name: "tavily", discover: tavily },
-  { name: "brave", discover: brave },
-  { name: "serper", discover: serper },
-];
-
-/** General-web scrapers: usable off cloud hosts, blocked on most of them. */
-const scrapedSources: { name: string; discover: Discovery }[] = [
-  { name: "ddg-html", discover: duckDuckGoHtml },
-  { name: "ddg-lite", discover: duckDuckGoLite },
-];
-
-/**
- * Public APIs that answer from anywhere, no key required. None of them covers
- * the whole web, so they are queried together and merged rather than tried in
- * turn — between them they cover the encyclopaedic, developer, academic, and
- * news queries agents actually ask.
- */
-const openSources: { name: string; discover: Discovery }[] = [
-  { name: "wikipedia", discover: wikipedia },
-  { name: "stackoverflow", discover: stackExchange },
-  { name: "github", discover: github },
-  { name: "hackernews", discover: hackerNews },
-  { name: "crossref", discover: crossref },
-  { name: "google-news", discover: googleNewsRss },
-];
-
-export const hasSearchProviderKey = Boolean(
-  process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY || process.env.SERPER_API_KEY
-);
-
-const TURKISH_MAP: Record<string, string> = {
-  ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u",
-};
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[çğıöşüâîû]/g, (c) => TURKISH_MAP[c] ?? c)
-    .replace(/[^a-z0-9\s]/g, " ");
-}
-
-const STOPWORDS = new Set([
-  "nedir", "nasil", "ne", "mi", "mu", "ile", "icin", "ve", "veya", "bir", "the",
-  "what", "is", "are", "how", "to", "a", "an", "of", "for", "and", "in", "on",
-]);
-
-/**
- * The open sources match on their own indexes, which for a general query can
- * mean a Turkish Wikipedia article about viruses answering one about vector
- * databases. Requiring a shared term with the query drops those rather than
- * passing plausible-looking noise to a model.
- */
-function isRelevant(result: SearchResult, queryTokens: string[]): boolean {
-  if (queryTokens.length === 0) return true;
-  const haystack = normalize(`${result.title} ${result.snippet}`);
-  return queryTokens.some((token) => haystack.includes(token));
-}
-
-function queryTokens(query: string): string[] {
-  return normalize(query)
-    .split(/\s+/)
-    .filter((t) => t.length >= 4 && !STOPWORDS.has(t))
-    .map((t) => t.slice(0, Math.max(4, t.length - 2)));
-}
-
-/** Interleaves each source's results so no single source crowds out the rest. */
-function mergeRoundRobin(lists: SearchResult[][], limit: number): SearchResult[] {
-  const merged: SearchResult[] = [];
+/** Interleaves several providers' results so no single source dominates. */
+function mergeRoundRobin(lists: RawResult[][], limit: number): RawResult[] {
+  const merged: RawResult[] = [];
   const seen = new Set<string>();
-  const depth = Math.max(...lists.map((l) => l.length), 0);
+  const depth = Math.max(0, ...lists.map((l) => l.length));
 
   for (let rank = 0; rank < depth && merged.length < limit; rank++) {
     for (const list of lists) {
       if (merged.length >= limit) break;
       const item = list[rank];
       if (!item) continue;
-      const key = item.url.replace(/\/+$/, "");
+      const key = item.url.replace(/\/+$/, "").toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(item);
@@ -455,133 +63,245 @@ function mergeRoundRobin(lists: SearchResult[][], limit: number): SearchResult[]
   return merged;
 }
 
-async function discoverResults(
+/** Drops open-source results that share no meaningful term with the query. */
+function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
+  const terms = plan.optimized
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length >= 4)
+    .map((t) => t.slice(0, Math.max(4, t.length - 2)));
+
+  if (terms.length === 0) return results;
+
+  return results.filter((r) => {
+    const hay = `${r.title} ${r.snippet}`.toLowerCase();
+    return terms.some((t) => hay.includes(t));
+  });
+}
+
+interface DiscoveryOutcome {
+  results: RawResult[];
+  provider: string;
+  degraded: { provider: string; reason: string }[];
+}
+
+async function runProvider(
+  provider: Provider,
   query: string,
-  maxResults: number,
-  locale: string
-): Promise<{ results: SearchResult[]; source: string }> {
-  for (const source of [...keyedSources, ...scrapedSources]) {
-    const results = filterUnsafe(await source.discover(query, maxResults, locale));
-    if (results.length > 0) return { results, source: source.name };
+  limit: number,
+  locale: string,
+  freshnessHours: number | null | undefined,
+  degraded: { provider: string; reason: string }[]
+): Promise<RawResult[]> {
+  try {
+    const results = await provider.search(query, limit, locale, freshnessHours);
+    if (results.length === 0) {
+      degraded.push({ provider: provider.name, reason: "no_results" });
+    }
+    return results;
+  } catch (err) {
+    degraded.push({
+      provider: provider.name,
+      reason: err instanceof Error ? err.message.slice(0, 120) : "failed",
+    });
+    return [];
+  }
+}
+
+async function discover(
+  plan: QueryPlan,
+  limit: number,
+  locale: string,
+  freshnessHours: number | null | undefined
+): Promise<DiscoveryOutcome> {
+  const degraded: { provider: string; reason: string }[] = [];
+
+  // A configured provider is the dependable path; try each in turn.
+  for (const provider of KEYED_PROVIDERS) {
+    if (!provider.available()) continue;
+    const results = await runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded);
+    const safe = filterUnsafe(results);
+    if (safe.length > 0) return { results: safe, provider: provider.name, degraded };
   }
 
-  const tokens = queryTokens(query);
+  // Otherwise fan out across the open providers that suit this intent.
+  const open = openProvidersForIntent(plan.intent);
   const settled = await Promise.all(
-    openSources.map(async (source) => ({
-      name: source.name,
-      results: filterUnsafe(await source.discover(query, maxResults, locale)).filter((r) =>
-        isRelevant(r, tokens)
+    open.map(async (provider) => ({
+      name: provider.name,
+      results: filterUnsafe(
+        await runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded)
       ),
     }))
   );
+
   const answered = settled.filter((s) => s.results.length > 0);
-  if (answered.length === 0) return { results: [], source: "none" };
+  if (answered.length === 0) return { results: [], provider: "none", degraded };
+
+  // Open indexes match loosely, so gate on shared terms before merging.
+  const gated = answered
+    .map((s) => ({ name: s.name, results: relevanceGate(s.results, plan) }))
+    .filter((s) => s.results.length > 0);
+
+  const chosen = gated.length > 0 ? gated : answered;
 
   return {
-    results: mergeRoundRobin(
-      answered.map((s) => s.results),
-      maxResults
-    ),
-    source: answered.map((s) => s.name).join("+"),
+    results: mergeRoundRobin(chosen.map((s) => s.results), limit),
+    provider: chosen.map((s) => s.name).join("+"),
+    degraded,
   };
 }
 
-/**
- * Pages that are not UTF-8 (still common on older academic and news sites)
- * decode into mojibake, which is worse than no content at all once it reaches
- * a model. Honour the charset the response declares, in the header or in the
- * document's own meta tag.
- */
-function decodeHtml(buffer: Buffer, contentType: string): string {
-  const headerCharset = /charset=["']?([\w-]+)/i.exec(contentType)?.[1];
-  const ascii = buffer.subarray(0, 2048).toString("latin1");
-  const metaCharset =
-    /<meta[^>]+charset=["']?([\w-]+)/i.exec(ascii)?.[1] ??
-    /<meta[^>]+content=["'][^"']*charset=([\w-]+)/i.exec(ascii)?.[1];
+/** Fetches page content for results, bounded so one slow host can't stall. */
+async function enrich(
+  results: RawResult[],
+  options: SearchOptions
+): Promise<{ raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[]> {
+  const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
 
-  const charset = (headerCharset ?? metaCharset ?? "utf-8").toLowerCase();
-  if (charset === "utf-8" || charset === "utf8") return buffer.toString("utf-8");
-
-  try {
-    return new TextDecoder(charset).decode(buffer);
-  } catch {
-    return buffer.toString("utf-8");
+  for (let i = 0; i < results.length; i += MAX_ENRICH_CONCURRENCY) {
+    const batch = results.slice(i, i + MAX_ENRICH_CONCURRENCY);
+    const pages = await Promise.all(
+      batch.map(async (raw) => {
+        if (options.includeContent === false) {
+          return { raw, content: "", updatedAt: null, publishedAt: raw.publishedAt ?? null };
+        }
+        const page = await fetchAndExtract(raw.url, { policy: options.domainPolicy });
+        return {
+          raw,
+          content: page?.content ?? raw.snippet,
+          updatedAt: page?.updatedAt ?? null,
+          // A date from the page itself beats the provider's guess.
+          publishedAt: page?.publishedAt ?? raw.publishedAt ?? null,
+        };
+      })
+    );
+    out.push(...pages);
   }
+
+  return out;
 }
 
-function extractReadableText($: cheerio.CheerioAPI): string {
-  $("script, style, noscript, nav, header, footer, svg, form, iframe").remove();
-  const paragraphs: string[] = [];
-  $("p, li, h1, h2, h3").each((_, el) => {
-    const text = $(el).text().replace(/\s+/g, " ").trim();
-    if (text.length > 40) paragraphs.push(text);
-  });
-  if (paragraphs.length === 0) {
-    return $("body").text().replace(/\s+/g, " ").trim().slice(0, CONTENT_TRUNCATE);
-  }
-  return paragraphs.join("\n").slice(0, CONTENT_TRUNCATE);
-}
-
-async function fetchPageContent(url: string): Promise<string> {
-  const { signal, cancel } = withTimeout(FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
-      signal,
-    });
-    if (!res.ok) return "";
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html")) return "";
-
-    const reader = res.body?.getReader();
-    if (!reader) return "";
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        total += value.byteLength;
-        if (total > MAX_PAGE_BYTES) break;
-        chunks.push(value);
-      }
+/** Counts how many distinct hosts back the same headline-ish claim. */
+function corroborationByHost(results: RawResult[]): Map<string, number> {
+  const hosts = new Map<string, number>();
+  for (const r of results) {
+    try {
+      const host = new URL(r.url).hostname.replace(/^www\./, "");
+      hosts.set(host, (hosts.get(host) ?? 0) + 1);
+    } catch {
+      // ignore
     }
-    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-    return extractReadableText(cheerio.load(decodeHtml(buffer, contentType)));
-  } catch {
-    return "";
-  } finally {
-    cancel();
   }
+  return hosts;
 }
 
-/**
- * Clouda's own web-search pipeline: discovery across several independent
- * sources (so one blocking our IP range doesn't take the product down),
- * followed by a server-side fetch and readability pass so callers get usable
- * page content rather than bare snippets. No third-party paid API required.
- */
 export async function searchWeb(
   query: string,
-  {
-    maxResults = 5,
-    locale = DEFAULT_LOCALE,
-  }: { maxResults?: number; locale?: string } = {}
+  options: SearchOptions = {}
 ): Promise<SearchResponse> {
-  const start = Date.now();
-  const { results, source } = await discoverResults(query, maxResults, locale);
+  const started = Date.now();
+  const trimmed = query.trim();
+  if (!trimmed) throw new CloudaError("invalid_request", "Sorgu boş olamaz.");
+  if (trimmed.length > 400) throw new CloudaError("query_too_long", "Sorgu 400 karakteri aşamaz.");
 
-  const withContent = await Promise.all(
-    results.map(async (result) => {
-      const content = await fetchPageContent(result.url);
-      return { ...result, content: content || result.snippet };
-    })
-  );
+  const maxResults = Math.min(Math.max(options.maxResults ?? 10, 1), 30);
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const plan = planQuery(trimmed, { freshnessHours: options.freshnessHours });
+  const freshnessHours = options.freshnessHours ?? plan.suggestedFreshnessHours;
 
-  return {
-    query,
-    results: withContent,
-    tookMs: Date.now() - start,
-    source,
+  const lookup = {
+    namespace: "search",
+    query: plan.optimized,
+    locale,
+    maxResults,
+    freshnessHours,
   };
+
+  if (!options.noCache) {
+    const hit = await cacheGet<SearchResponse>(lookup);
+    if (hit) {
+      return { ...hit.payload, cacheHit: true, tookMs: Date.now() - started };
+    }
+  }
+
+  const candidateCount = Math.max(MIN_CANDIDATES, maxResults * CANDIDATE_MULTIPLIER);
+  const {
+    results: candidates,
+    provider,
+    degraded,
+  } = await discover(plan, candidateCount, locale, freshnessHours);
+  const raw = candidates.slice(0, maxResults);
+
+  if (raw.length === 0) {
+    return {
+      query: trimmed,
+      plan,
+      results: [],
+      provider,
+      cacheHit: false,
+      tookMs: Date.now() - started,
+      degraded,
+    };
+  }
+
+  const enriched = await enrich(raw, options);
+  const hostCounts = corroborationByHost(raw);
+
+  let results: SearchResult[] = enriched.map((item) => {
+    let host = "";
+    try {
+      host = new URL(item.raw.url).hostname.replace(/^www\./, "");
+    } catch {
+      /* ignore */
+    }
+
+    return {
+      title: item.raw.title,
+      url: item.raw.url,
+      snippet: item.raw.snippet,
+      content: item.content,
+      publishedAt: item.publishedAt,
+      updatedAt: item.updatedAt,
+      source: provider,
+      scores: scoreResult({
+        query: plan.optimized,
+        intent: plan.intent,
+        result: { ...item.raw, publishedAt: item.publishedAt },
+        content: item.content,
+        corroboration: hostCounts.get(host) ?? 1,
+      }),
+    };
+  });
+
+  // Honour an explicit freshness window by dropping provably older content.
+  if (freshnessHours != null) {
+    const cutoff = Date.now() - freshnessHours * 3_600_000;
+    const withinWindow = results.filter((r) => {
+      if (!r.publishedAt) return true; // unknown date: keep, scored neutral
+      const ts = Date.parse(r.publishedAt);
+      return Number.isNaN(ts) || ts >= cutoff;
+    });
+    if (withinWindow.length > 0) results = withinWindow;
+  }
+
+  results.sort((a, b) => b.scores.overall - a.scores.overall);
+
+  const response: SearchResponse = {
+    query: trimmed,
+    plan,
+    results,
+    provider,
+    cacheHit: false,
+    tookMs: Date.now() - started,
+    degraded,
+  };
+
+  if (!options.noCache && results.length > 0) {
+    await cacheSet(lookup, response, ttlForIntent(plan.intent, freshnessHours));
+  }
+
+  return response;
 }
+
+export const hasSearchProviderKey = () => configuredKeyedProvider() !== null;

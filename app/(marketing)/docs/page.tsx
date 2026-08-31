@@ -1,88 +1,444 @@
 import Link from "next/link";
-import CodeSnippet from "@/components/CodeSnippet";
+import { CREDITS } from "@/lib/constants";
 
-const errors = [
-  { code: "401", desc: "API anahtarı eksik ya da geçersiz" },
-  { code: "402", desc: "Yetersiz kredi" },
-  { code: "400", desc: "Eksik ya da hatalı istek gövdesi" },
-  { code: "429", desc: "Çok fazla istek (yalnızca demo uç noktası)" },
+export const metadata = {
+  title: "Clouda API dokümantasyonu",
+  description: "Search, Deep Research, Browser Agent, Monitoring ve Citations uç noktaları.",
+};
+
+const endpoints = [
+  {
+    method: "POST",
+    path: "/api/v1/search",
+    capability: "her zaman açık",
+    cost: `${CREDITS.search} kredi`,
+    summary: "Web araması, içerik çıkarımı ve kalite skorları.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/research",
+    capability: "research",
+    cost: `${CREDITS.researchBase} + arama başına ${CREDITS.researchPerSearch}`,
+    summary: "Soruyu alt sorulara böler, çok turlu araştırır, kaynaklı rapor üretir.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/browse",
+    capability: "browse",
+    cost: `${CREDITS.browseBase} + adım başına ${CREDITS.browsePerStep}`,
+    summary: "Sayfa açar, bağlantı takip eder, sayfalar, sayfa içinde arar.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/monitors",
+    capability: "monitor",
+    cost: `kontrol başına ${CREDITS.monitorCheck}`,
+    summary: "URL ya da sorgu izler, değişince webhook gönderir.",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/usage",
+    capability: "her zaman açık",
+    cost: "ücretsiz",
+    summary: "Kullanım, maliyet ve performans metrikleri.",
+  },
 ];
+
+const errorCodes = [
+  ["missing_api_key", "401", "Authorization başlığı yok"],
+  ["invalid_api_key", "401", "Anahtar tanınmadı"],
+  ["capability_not_enabled", "403", "Bu anahtarda ilgili özellik kapalı"],
+  ["insufficient_credits", "402", "Hesap bakiyesi yetersiz"],
+  ["credit_cap_reached", "402", "Anahtarın kredi tavanına ulaşıldı"],
+  ["rate_limited", "429", "Dakikalık istek sınırı aşıldı"],
+  ["blocked_url", "403", "Özel ağ ya da yasaklı hedef"],
+  ["domain_not_allowed", "403", "Anahtarın alan adı politikasına takıldı"],
+  ["captcha_encountered", "502", "Kaynak bot doğrulaması istedi"],
+  ["fetch_timeout", "504", "Kaynak zamanında yanıt vermedi"],
+  ["provider_failed", "502", "Arama sağlayıcısı yanıt vermedi"],
+];
+
+function Section({ id, children }: { id: string; children: React.ReactNode }) {
+  return (
+    <section id={id} className="scroll-mt-24 border-t border-clouda-border pt-12">
+      {children}
+    </section>
+  );
+}
+
+function Code({ children }: { children: string }) {
+  return (
+    <pre className="mt-4 overflow-x-auto rounded-card border border-clouda-border bg-white p-5 font-mono text-[13px] leading-relaxed">
+      <code>{children}</code>
+    </pre>
+  );
+}
 
 export default function DocsPage() {
   return (
-    <section className="mx-auto max-w-[900px] px-6 py-20">
-      <p className="eyebrow-plain">dokümantasyon</p>
-      <h1 className="display mt-4 text-[40px] sm:text-5xl">API referansı</h1>
-      <p className="mt-6 max-w-xl text-lg text-clouda-muted">
-        Clouda tek bir uç noktadan oluşur. Anahtarını{" "}
-        <Link href="/dashboard" className="text-clouda-indigo underline underline-offset-4">
-          panelden
-        </Link>{" "}
-        oluştur, aşağıdaki isteği gönder.
+    <div className="mx-auto max-w-[1000px] px-6 py-16">
+      <p className="eyebrow">dokümantasyon</p>
+      <h1 className="display mt-6 text-[40px] sm:text-5xl">AI Web Intelligence API</h1>
+      <p className="prose-serif mt-6 max-w-2xl">
+        Tek bir kimlik doğrulama, tek bir hata sözlüğü, tutarlı JSON. Web araması her anahtarda
+        açıktır; derin araştırma, tarayıcı ajanı, izleme ve alıntı doğrulama özelliklerini anahtar
+        bazında sen seçersin.
       </p>
 
-      <div className="card mt-12 p-8">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-btn bg-clouda-indigoSoft px-3 py-1.5 font-mono text-xs font-medium text-clouda-indigo">
-            POST
-          </span>
-          <code className="font-mono text-[15px] text-clouda-ink">/api/v1/search</code>
-        </div>
-        <p className="mt-5 leading-relaxed text-clouda-muted">
-          Verilen sorgu için web&apos;de arama yapar, sonuç sayfalarının içeriğini çıkarır ve
-          yapılandırılmış JSON döner. İstek başına <strong className="text-clouda-ink">10 kredi</strong>{" "}
-          düşer.
-        </p>
+      <div className="mt-10 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-clouda-border">
+              <th className="eyebrow-plain pb-3">Uç nokta</th>
+              <th className="eyebrow-plain pb-3">Özellik</th>
+              <th className="eyebrow-plain pb-3">Maliyet</th>
+            </tr>
+          </thead>
+          <tbody>
+            {endpoints.map((e) => (
+              <tr key={e.path} className="border-b border-clouda-border align-top last:border-0">
+                <td className="py-3.5 pr-4">
+                  <code className="font-mono text-clouda-ink">
+                    <span className="text-clouda-indigo">{e.method}</span> {e.path}
+                  </code>
+                  <p className="mt-1 text-clouda-muted">{e.summary}</p>
+                </td>
+                <td className="py-3.5 pr-4 font-mono text-xs text-clouda-muted">{e.capability}</td>
+                <td className="py-3.5 pr-4 text-xs text-clouda-muted">{e.cost}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-        <h3 className="eyebrow-plain mt-10">Başlıklar</h3>
-        <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
-{`Authorization: Bearer cld_live_xxxxxxxx
-Content-Type: application/json`}
-        </pre>
+      <div className="mt-16 space-y-16">
+        <Section id="auth">
+          <h2 className="display text-3xl">Kimlik doğrulama</h2>
+          <p className="mt-4 text-clouda-muted">
+            Her istek panelden oluşturduğun anahtarı taşır. Anahtar yalnızca oluşturulurken bir kez
+            gösterilir; sunucuda SHA-256 özeti saklanır.
+          </p>
+          <Code>{`Authorization: Bearer cld_live_xxxxxxxx
+Content-Type: application/json`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Yanıt başlıklarında <code className="font-mono">X-Clouda-Credits-Remaining</code> ve{" "}
+            <code className="font-mono">X-Clouda-RateLimit-Limit</code> döner.
+          </p>
+        </Section>
 
-        <h3 className="eyebrow-plain mt-10">İstek gövdesi</h3>
-        <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
-{`{
-  "query": "aranacak metin",
-  "max_results": 5,      // opsiyonel, 1-10 arası, varsayılan 5
-  "locale": "tr-TR"      // opsiyonel, sonuç dili/bölgesi, varsayılan tr-TR
-}`}
-        </pre>
+        <Section id="search">
+          <h2 className="display text-3xl">Search</h2>
+          <p className="mt-4 text-clouda-muted">
+            Sorguyu analiz eder, uygun sağlayıcıyı seçer, sonuç sayfalarını okur ve her sonuca
+            kalite skorları ekler.
+          </p>
+          <Code>{`POST /api/v1/search
 
-        <h3 className="eyebrow-plain mt-10">Yanıt</h3>
-        <pre className="mt-3 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed">
-{`{
-  "query": "aranacak metin",
+{
+  "query": "vektör veritabanı karşılaştırması",
+  "max_results": 5,          // 1-20, varsayılan 5
+  "locale": "tr-TR",         // varsayılan tr-TR
+  "freshness": "week",       // hour | day | week | month | year | saat sayısı
+  "include_content": true,   // sayfa metni çıkarılsın mı
+  "no_cache": false,         // cache'i tamamen atla
+  "mode": "results"          // results | sources | claims
+}`}</Code>
+          <Code>{`{
+  "query": "vektör veritabanı karşılaştırması",
+  "mode": "results",
+  "intent": "product",
+  "freshness_applied": true,
+  "provider": "tavily",
+  "cached": false,
   "results": [
     {
-      "title": "Sayfa başlığı",
-      "url": "https://ornek.com/sayfa",
-      "snippet": "Arama sonucu özeti...",
-      "content": "Sayfadan çıkarılan okunabilir metin..."
+      "title": "…",
+      "url": "https://…",
+      "snippet": "…",
+      "content": "Sayfadan çıkarılan okunabilir metin…",
+      "published_at": "2026-08-21T09:14:00.000Z",
+      "updated_at": null,
+      "source": "tavily",
+      "scores": {
+        "relevance": 0.82,
+        "credibility": 0.78,
+        "freshness": 0.64,
+        "overall": 0.76,
+        "signals": ["referans", "dolu-içerik"]
+      }
     }
   ],
-  "took_ms": 842,
-  "source": "tavily",
   "credits_used": 10,
-  "credits_remaining": 1990
-}`}
-        </pre>
+  "credits_remaining": 1990,
+  "took_ms": 842
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Modlar.</strong>{" "}
+            <code className="font-mono">sources</code> yalnızca bağlantı ve skorları döner (sayfa
+            indirilmez, daha hızlıdır). <code className="font-mono">claims</code> sonuçlardan iddia
+            çıkarır ve kaynaklarla eşler — <code className="font-mono">citations</code> özelliği
+            gerektirir.
+          </p>
+        </Section>
 
-        <h3 className="eyebrow-plain mt-10">Hata kodları</h3>
-        <div className="mt-3 divide-y divide-clouda-border">
-          {errors.map((e) => (
-            <div key={e.code} className="flex gap-5 py-3">
-              <code className="font-mono text-sm text-clouda-indigo">{e.code}</code>
-              <span className="text-sm text-clouda-muted">{e.desc}</span>
-            </div>
-          ))}
-        </div>
+        <Section id="scoring">
+          <h2 className="display text-3xl">Kalite skorları</h2>
+          <p className="mt-4 text-clouda-muted">
+            Dört skor da 0-1 aralığındadır. Amaç, modelin sıralamaya körü körüne güvenmek yerine
+            neye dayanacağını seçebilmesi.
+          </p>
+          <div className="mt-6 space-y-5">
+            {[
+              {
+                name: "relevance",
+                body: "Sorgu terimlerinin başlık, özet ve içerikteki kapsanma oranı. Başlık en yüksek ağırlığa sahiptir; tam ifade eşleşmesi ayrıca puan ekler.",
+              },
+              {
+                name: "credibility",
+                body: "Alan adının sınıfı (birincil kaynak, akademik, resmi dokümantasyon, kurumsal haber, referans, topluluk, bilinmeyen) sayfa sinyalleriyle düzeltilir: HTTPS yokluğu düşürür, çıkarılabilen dolu içerik yükseltir, aynı iddiayı bağımsız kaynakların desteklemesi yükseltir.",
+              },
+              {
+                name: "freshness",
+                body: "İçeriğin yaşına göre üstel azalma. Yarılanma süresi konuya göre değişir: haberde 24 saat, finansta 12 saat, teknik içerikte 180 gün. Tarih bilinmiyorsa 0.5 döner — eski varsayılmaz.",
+              },
+              {
+                name: "overall",
+                body: "Üçünün ağırlıklı ortalaması. Ağırlıklar sorgu türüne göre değişir: haber sorgusunda tazelik, akademik sorguda güvenilirlik baskındır.",
+              },
+            ].map((s) => (
+              <div key={s.name} className="flex gap-3">
+                <span className="mt-2 block h-2 w-2 shrink-0 bg-clouda-indigo" />
+                <div>
+                  <code className="font-mono text-sm text-clouda-ink">{s.name}</code>
+                  <p className="mt-1 text-sm leading-relaxed text-clouda-muted">{s.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section id="research">
+          <h2 className="display text-3xl">Deep Research</h2>
+          <p className="mt-4 text-clouda-muted">
+            Soruyu alt sorulara böler, her biri için arama yapar, kaynakları okur, zayıf kalan
+            açılar için yeni tur arama yapar ve kaynaklı bir rapor döner.
+          </p>
+          <Code>{`POST /api/v1/research
+
+{
+  "question": "Vektör veritabanları 2026'da nasıl konumlanıyor?",
+  "depth": "standard",       // quick | standard | deep
+  "max_sources": 12,         // 3-40
+  "max_duration_ms": 60000,  // 5000-120000
+  "freshness": "month"
+}`}</Code>
+          <Code>{`{
+  "research_id": "…",
+  "plan": ["…alt soru 1", "…alt soru 2"],
+  "summary": "En iyi desteklenen bulgulardan derlenen özet.",
+  "sections": [
+    { "subQuestion": "…", "summary": "…", "findings": [ /* claim */ ], "sourceUrls": ["…"] }
+  ],
+  "key_findings": [
+    {
+      "id": "claim_1",
+      "text": "Kaynakta birebir geçen cümle.",
+      "citations": [{ "url": "…", "quote": "…", "credibility": 0.9 }],
+      "conflicts": [],
+      "independentSources": 3,
+      "confidence": 0.82,
+      "basis": ["3 bağımsız kaynak", "ortalama güvenilirlik 0.86"]
+    }
+  ],
+  "conflicts": [ /* kaynakların çeliştiği iddialar */ ],
+  "sources": [{ "url": "…", "credibility": 0.9, "usedFor": ["…"] }],
+  "gaps": ["… için doğrulanabilir kaynak bulunamadı."],
+  "stats": { "searches": 6, "sourcesExamined": 12, "rounds": 2, "budgetExhausted": false }
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Derinlik profilleri: <code className="font-mono">quick</code> 1 tur / 3 alt soru,{" "}
+            <code className="font-mono">standard</code> 2 tur / 5 alt soru,{" "}
+            <code className="font-mono">deep</code> 3 tur / 8 alt soru. Bütçe üç eksende birden
+            sınırlanır — tur, kaynak ve süre — ve hangisi önce dolarsa rapor{" "}
+            <code className="font-mono">budgetExhausted</code> ile döner.
+          </p>
+        </Section>
+
+        <Section id="citations">
+          <h2 className="display text-3xl">Citations ve doğrulama</h2>
+          <p className="mt-4 text-clouda-muted">
+            İddialar üretilmez, çıkarılır: her <code className="font-mono">claim.text</code>{" "}
+            kaynakta birebir geçen bir cümledir, dolayısıyla alıntı her zaman gerçekten var olan
+            bir metni gösterir.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            Aynı şeyi söyleyen cümleler tek iddiada gruplanır; grubu destekleyen{" "}
+            <em>farklı alan adı</em> sayısı bağımsız destek olarak sayılır. Aynı konuda farklı sayı
+            veren ya da birbirini olumsuzlayan cümleler çelişki olarak işaretlenir.{" "}
+            <code className="font-mono">confidence</code>, bağımsız destekle doyuma ulaşan bir
+            eğriden gelir, kaynak güvenilirliğiyle ölçeklenir ve her çelişki için düşürülür.
+          </p>
+        </Section>
+
+        <Section id="browse">
+          <h2 className="display text-3xl">Browser Agent</h2>
+          <p className="mt-4 text-clouda-muted">
+            Adım adım gezinme. Her adım aynı SSRF ve alan adı politikasından geçer, adım sınırına
+            sayılır ve dönen <code className="font-mono">trace</code> içinde loglanır.
+          </p>
+          <Code>{`POST /api/v1/browse
+
+{
+  "actions": [
+    { "type": "open", "url": "https://ornek.com/urunler" },
+    { "type": "find", "query": "fiyat" },
+    { "type": "paginate", "pages": 2 },
+    { "type": "follow", "linkText": "detaylar" },
+    { "type": "extract" }
+  ],
+  "max_steps": 8,            // 1-20
+  "max_duration_ms": 45000
+}`}</Code>
+          <p className="mt-4 text-sm leading-relaxed text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Sınırlar, açıkça.</strong> Arkada
+            headless tarayıcı yoktur: JavaScript çalıştırılmaz, bu yüzden içeriği yalnızca istemci
+            tarafında oluşan sayfalarda yanıt{" "}
+            <code className="font-mono">warning: javascript_required</code> ile döner.{" "}
+            <code className="font-mono">submit</code> yalnızca GET sorgu parametresi ekler — durum
+            değiştiren POST gönderimi bilinçli olarak desteklenmez, çünkü otonom bir ajanın bu API
+            üzerinden satın alma ya da gönderi yapabilmesi istenmez.
+          </p>
+        </Section>
+
+        <Section id="monitoring">
+          <h2 className="display text-3xl">Monitoring</h2>
+          <p className="mt-4 text-clouda-muted">
+            Bir URL&apos;yi ya da bir arama sorgusunu izler. Değişiklik, ham HTML üzerinde değil
+            çıkarılmış metin üzerinde hesaplanır; böylece dönen reklam ya da oturum jetonu
+            &quot;değişiklik&quot; sayılmaz.
+          </p>
+          <Code>{`POST /api/v1/monitors
+
+{
+  "type": "url",                       // url | query
+  "target": "https://ornek.com/fiyat",
+  "webhook_url": "https://seninapp.com/hooks/clouda",
+  "interval_minutes": 60               // 15-1440
+}`}</Code>
+          <Code>{`// webhook gövdesi
+{
+  "event": "monitor.changed",
+  "monitor_id": "…",
+  "change_type": "content_changed",    // content_changed | new_results | unreachable
+  "summary": "Fiyat değişti: 1.299 TL → 1.149 TL",
+  "target": "https://ornek.com/fiyat",
+  "occurred_at": "2026-08-31T18:00:00.000Z",
+  "data": { "previousPrices": ["1.299 TL"], "currentPrices": ["1.149 TL"] }
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <code className="font-mono">GET /api/v1/monitors</code> izleyicileri ve son olayları
+            listeler, <code className="font-mono">DELETE /api/v1/monitors/&#123;id&#125;</code>{" "}
+            durdurur. Kontroller 15 dakikada bir çalışan zamanlanmış görevle yapılır; kredisi biten
+            hesabın izleyicileri hata döngüsüne girmek yerine duraklatılır.
+          </p>
+        </Section>
+
+        <Section id="reliability">
+          <h2 className="display text-3xl">Güvenilirlik ve fallback</h2>
+          <p className="mt-4 text-clouda-muted">
+            Arama sağlayıcıları sırayla denenir: anahtarlı sağlayıcı (Tavily / Brave / Serper)
+            önce, sonra açık kaynaklar. Bir sağlayıcı boş dönerse ya da hata verirse sıradakine
+            geçilir; denenip başarısız olanlar yanıtta{" "}
+            <code className="font-mono">degraded_providers</code> altında görünür — sessizce
+            yutulmaz.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            Cache, sorgunun normalize edilmiş hâline göre çalışır ve tazelik penceresi cache
+            sözleşmesinin parçasıdır: &quot;son 1 saat&quot; isteyen bir çağrıya bir gün önce
+            üretilmiş satır asla dönmez. TTL konuya göre değişir — haberde 5 dakika, teknik
+            içerikte 24 saat.
+          </p>
+        </Section>
+
+        <Section id="security">
+          <h2 className="display text-3xl">Güvenlik</h2>
+          <ul className="mt-4 space-y-3">
+            {[
+              "Tüm giden istekler SSRF kontrolünden geçer: özel ağ aralıkları, loopback, link-local ve bulut metadata adresleri reddedilir.",
+              "Yönlendirmeler elle takip edilir; her hedef yeniden politikadan geçirilir, böylece açık yönlendirmeyle iç ağa sızılamaz.",
+              "Anahtar bazında izinli/yasaklı alan adı listesi tanımlanabilir; tarayıcı ajanı ve izleyiciler bu listeye uyar.",
+              "Her isteğe zaman aşımı, boyut sınırı ve adım sınırı uygulanır.",
+              "Kullanıcı bilgisi taşıyan URL'ler ve http/https dışındaki şemalar reddedilir.",
+              "Anahtarlar hash'lenmiş saklanır, kullanıcı verisi anahtar bazında izole edilir.",
+            ].map((item) => (
+              <li key={item} className="flex gap-3 text-sm leading-relaxed text-clouda-muted">
+                <span className="mt-1.5 block h-2 w-2 shrink-0 bg-clouda-indigo" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </Section>
+
+        <Section id="errors">
+          <h2 className="display text-3xl">Hata kodları</h2>
+          <p className="mt-4 text-clouda-muted">
+            Hatalar tek bir zarf içinde döner. <code className="font-mono">retryable</code> alanı,
+            aynı isteğin kısa bir beklemeden sonra tekrar denenmeye değer olup olmadığını söyler.
+          </p>
+          <Code>{`{
+  "error": "rate_limited",
+  "message": "Dakikada 60 istek sınırını aştın.",
+  "retryable": true,
+  "details": { "limit": 60, "windowSeconds": 60 }
+}`}</Code>
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-clouda-border">
+                  <th className="eyebrow-plain pb-3">Kod</th>
+                  <th className="eyebrow-plain pb-3">HTTP</th>
+                  <th className="eyebrow-plain pb-3">Anlamı</th>
+                </tr>
+              </thead>
+              <tbody>
+                {errorCodes.map(([code, status, meaning]) => (
+                  <tr key={code} className="border-b border-clouda-border last:border-0">
+                    <td className="py-3 pr-4 font-mono text-xs text-clouda-indigo">{code}</td>
+                    <td className="py-3 pr-4 font-mono text-xs text-clouda-muted">{status}</td>
+                    <td className="py-3 pr-4 text-clouda-muted">{meaning}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+
+        <Section id="usage">
+          <h2 className="display text-3xl">Kullanım ve gözlemlenebilirlik</h2>
+          <Code>{`GET /api/v1/usage?hours=24
+
+{
+  "key": { "capabilities": ["research"], "rate_limit_per_min": 60, "credits_spent": 320 },
+  "credits_remaining": 1680,
+  "totals": { "requests": 42, "credits": 320, "errors": 1, "cacheHits": 11 },
+  "by_operation": { "search": { "requests": 38, "credits": 240, "avgLatencyMs": 910 } },
+  "provider_success_rate": { "tavily": { "calls": 38, "successRate": 0.974 } },
+  "cache_hit_rate": 0.262,
+  "error_rate": 0.024,
+  "latency_ms": { "p50": 780, "p95": 2140 }
+}`}</Code>
+        </Section>
       </div>
 
-      <h2 className="display mt-16 text-3xl">Örnek istek</h2>
-      <div className="mt-5">
-        <CodeSnippet />
+      <div className="mt-16 border-t border-clouda-border pt-10">
+        <h2 className="display text-3xl">Başlamaya hazır mısın?</h2>
+        <p className="mt-4 text-clouda-muted">
+          Kayıt ol, panelden anahtarını oluştur ve istediğin özellikleri seç.
+        </p>
+        <Link href="/signup" className="btn-dark mt-6">
+          Ücretsiz başla
+        </Link>
       </div>
-    </section>
+    </div>
   );
 }

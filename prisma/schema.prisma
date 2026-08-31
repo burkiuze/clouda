@@ -3,8 +3,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Migrations need a direct connection; the pooled URL cannot run DDL.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -21,10 +23,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts  Account[]
-  sessions  Session[]
-  apiKeys   ApiKey[]
-  usageLogs UsageLog[]
+  accounts     Account[]
+  sessions     Session[]
+  apiKeys      ApiKey[]
+  usageLogs    UsageLog[]
+  researchRuns ResearchRun[]
+  monitors     Monitor[]
 }
 
 model Account {
@@ -72,24 +76,129 @@ model ApiKey {
   lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  usageLogs UsageLog[]
+  /// Opt-in features for this key. Web search is always available and is not
+  /// listed here; everything else has to be granted explicitly.
+  capabilities    String[] @default([])
+  /// Requests per minute allowed on this key.
+  rateLimitPerMin Int      @default(60)
+  /// Optional ceiling on credits this key may spend, independent of the
+  /// account balance. Null means "only the account balance applies".
+  creditCap       Int?
+  creditsSpent    Int      @default(0)
+  /// When non-empty, browsing and content fetching are restricted to these hosts.
+  allowedDomains  String[] @default([])
+  blockedDomains  String[] @default([])
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageLogs    UsageLog[]
+  researchRuns ResearchRun[]
+  monitors     Monitor[]
 
   @@index([userId])
 }
 
 model UsageLog {
-  id           String   @id @default(cuid())
-  userId       String
-  apiKeyId     String
-  query        String
-  resultCount  Int
-  creditsUsed  Int
-  createdAt    DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  apiKeyId    String
+  /// "search" | "research" | "browse" | "monitor"
+  operation   String   @default("search")
+  query       String
+  resultCount Int
+  creditsUsed Int
+  /// Which discovery provider answered, or the merged source list.
+  provider    String?
+  latencyMs   Int      @default(0)
+  cacheHit    Boolean  @default(false)
+  steps       Int      @default(0)
+  success     Boolean  @default(true)
+  errorCode   String?
+  createdAt   DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([apiKeyId])
+  @@index([apiKeyId, createdAt])
+  @@index([createdAt])
+}
+
+/// Search results keyed by normalised query, so repeated questions cost
+/// nothing. Rows carry their own expiry; a request asking for fresher data
+/// than a row can offer bypasses it.
+model SearchCache {
+  id          String   @id @default(cuid())
+  cacheKey    String   @unique
+  query       String
+  payload     Json
+  /// Freshness window the cached payload was produced under, in hours.
+  freshnessH  Int?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  hits        Int      @default(0)
+
+  @@index([expiresAt])
+}
+
+model ResearchRun {
+  id           String    @id @default(cuid())
+  userId       String
+  apiKeyId     String
+  question     String
+  depth        String    @default("standard")
+  /// "running" | "completed" | "failed"
+  status       String    @default("running")
+  report       Json?
+  sourcesCount Int       @default(0)
+  searchCount  Int       @default(0)
+  creditsUsed  Int       @default(0)
+  errorCode    String?
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([apiKeyId])
+}
+
+model Monitor {
+  id              String    @id @default(cuid())
+  userId          String
+  apiKeyId        String
+  /// "url" watches a page; "query" watches a search for new results.
+  type            String
+  target          String
+  webhookUrl      String?
+  intervalMinutes Int       @default(60)
+  active          Boolean   @default(true)
+  /// Hash of the last observed content, used to detect change cheaply.
+  lastHash        String?
+  lastSnapshot    String?   @db.Text
+  lastCheckedAt   DateTime?
+  createdAt       DateTime  @default(now())
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey ApiKey         @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  events MonitorEvent[]
+
+  @@index([userId])
+  @@index([active, lastCheckedAt])
+}
+
+model MonitorEvent {
+  id         String   @id @default(cuid())
+  monitorId  String
+  /// "content_changed" | "new_results" | "unreachable"
+  changeType String
+  summary    String
+  payload    Json?
+  delivered  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId])
 }

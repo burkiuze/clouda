@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchWeb } from "@/lib/search/engine";
 import { rateLimit } from "@/lib/rateLimit";
+import { toCloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const MAX_QUERY_LENGTH = 200;
 
+/** Public demo behind the landing page. No key, no credits, tight limits. */
 async function runDemoSearch(req: NextRequest, query: string | undefined) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anonymous";
 
@@ -17,26 +20,33 @@ async function runDemoSearch(req: NextRequest, query: string | undefined) {
   }
 
   const trimmed = query?.trim();
-  if (!trimmed) {
-    return NextResponse.json({ error: "missing_query" }, { status: 400 });
-  }
+  if (!trimmed) return NextResponse.json({ error: "missing_query" }, { status: 400 });
   if (trimmed.length > MAX_QUERY_LENGTH) {
     return NextResponse.json({ error: "query_too_long" }, { status: 400 });
   }
 
-  const result = await searchWeb(trimmed, { maxResults: 3 });
+  try {
+    const result = await searchWeb(trimmed, { maxResults: 6 });
 
-  return NextResponse.json({
-    query: result.query,
-    results: result.results.map((r) => ({
-      title: r.title,
-      url: r.url,
-      snippet: r.snippet,
-      content: r.content.slice(0, 400),
-    })),
-    took_ms: result.tookMs,
-    source: result.source,
-  });
+    return NextResponse.json({
+      query: result.query,
+      intent: result.plan.intent,
+      results: result.results.map((r) => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+        content: r.content.slice(0, 400),
+        published_at: r.publishedAt,
+        scores: r.scores,
+      })),
+      took_ms: result.tookMs,
+      source: result.provider,
+      cached: result.cacheHit,
+    });
+  } catch (err) {
+    const error = toCloudaError(err);
+    return NextResponse.json(error.toJSON(), { status: error.status });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -49,8 +59,7 @@ export async function POST(req: NextRequest) {
   return runDemoSearch(req, body.query);
 }
 
-// Same demo search over GET, so the endpoint can be tried straight from a
-// browser address bar: /api/demo-search?q=...
+// Same demo search over GET, so the endpoint can be tried from a browser.
 export async function GET(req: NextRequest) {
   return runDemoSearch(req, req.nextUrl.searchParams.get("q") ?? undefined);
 }
