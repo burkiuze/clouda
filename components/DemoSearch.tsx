@@ -9,11 +9,7 @@ interface DemoResult {
   content: string;
 }
 
-const examples = [
-  "2026 yapay zeka model haberleri",
-  "en iyi vektör veritabanları",
-  "istanbul hava durumu",
-];
+const examples = ["vektör veritabanı nedir", "next.js app router", "yapay zeka haberleri"];
 
 export default function DemoSearch() {
   const [query, setQuery] = useState("");
