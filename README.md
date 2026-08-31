@@ -27,11 +27,20 @@ npm run dev
 Proje zaten deploy edildi, ama aşağıdakiler eklenmeden **Google ile giriş ve
 kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalışır):
 
-1. **Veritabanı** — Vercel projesinde **Storage** sekmesinden bir Postgres
-   veritabanı oluştur (Neon/Vercel Postgres). Projeye bağladığında
-   `DATABASE_URL` otomatik eklenir. Tabloları ayrıca oluşturman gerekmez:
-   `DATABASE_URL` tanımlıyken build sırasında `prisma migrate deploy`
-   otomatik çalışır (`scripts/migrate.mjs`), tanımlı değilken atlanır.
+1. **Veritabanı** — iki değişken gerekir: uygulamanın çalışma anında
+   kullandığı `DATABASE_URL` (transaction pooler, port 6543) ve
+   migration'ların kullandığı `DIRECT_URL` (session pooler, port 5432).
+   Transaction modunda DDL çalıştırılamadığı için ikisi ayrı.
+
+   Supabase kullanıyorsan **ikisi de pooler üzerinden** gitmeli. Supabase'in
+   doğrudan adresi (`db.<ref>.supabase.co`) ücretsiz planda yalnızca IPv6
+   kaydına sahip, Vercel fonksiyonları ise IPv4 — doğrudan adres oradan
+   bağlanamaz. Bağlantı dizelerini Supabase panelinde **Connect** düğmesinden
+   alabilirsin.
+
+   Tabloları ayrıca oluşturman gerekmez: `DATABASE_URL` ve `DIRECT_URL`
+   tanımlıyken build sırasında `prisma migrate deploy` otomatik çalışır
+   (`scripts/migrate.mjs`), tanımlı değilken atlanır.
 
 2. **Google OAuth** (opsiyonel, e-posta/şifre ile de kayıt olunabilir) — [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    üzerinden bir OAuth Client ID oluştur (Web application). Authorized
@@ -64,7 +73,15 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
 
 5. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
 
-Hepsini ekledikten sonra Vercel'de **Redeploy** yap.
+Hepsini ekledikten sonra Vercel'de **Redeploy** yap. Kurulumun doğru olup
+olmadığını tek istekle görebilirsin:
+
+```
+https://<vercel-domainin>/api/health
+```
+
+Her bağımlılığı ayrı ayrı raporlar; `ready: true` dönerse kayıt ve giriş
+çalışıyor demektir. Veritabanına bağlanamıyorsa hatanın kendisini gösterir.
 
 ## Giriş / kayıt
 
