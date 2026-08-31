@@ -14,6 +14,7 @@ interface ApiKeyRow {
   creditsSpent: number;
   lastUsedAt: string | null;
   createdAt: string;
+  expiresAt: string | null;
 }
 
 export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow[] }) {
@@ -27,6 +28,7 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [rateLimit, setRateLimit] = useState(60);
   const [creditCap, setCreditCap] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("90");
 
   function toggle(capability: Capability) {
     setCapabilities((prev) =>
@@ -45,6 +47,7 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
           capabilities,
           rateLimitPerMin: rateLimit,
           creditCap: creditCap ? Number(creditCap) : undefined,
+          expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
         }),
       });
       const data = await res.json();
@@ -63,6 +66,7 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
             capabilities: data.capabilities ?? [],
             rateLimitPerMin: data.rateLimitPerMin ?? 60,
             creditCap: data.creditCap ?? null,
+            expiresAt: data.expiresAt ?? null,
             creditsSpent: 0,
             lastUsedAt: null,
             createdAt: data.createdAt,
@@ -137,6 +141,24 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
                 onChange={(e) => setRateLimit(Number(e.target.value))}
                 className="field"
               />
+            </div>
+            <div>
+              <label htmlFor="key-expiry" className="field-label">
+                Geçerlilik (gün)
+              </label>
+              <input
+                id="key-expiry"
+                type="number"
+                min={1}
+                max={365}
+                value={expiresInDays}
+                onChange={(e) => setExpiresInDays(e.target.value)}
+                className="field"
+                placeholder="Süresiz"
+              />
+              <p className="mt-1.5 text-xs text-clouda-muted">
+                Boş bırakırsan süresiz olur. Süreli anahtar, sızarsa kendi kendine kapanır.
+              </p>
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="key-cap" className="field-label">
@@ -283,9 +305,18 @@ export default function ApiKeysManager({ initialKeys }: { initialKeys: ApiKeyRow
                     <span className="rounded-btn border border-clouda-border px-2.5 py-1 text-xs text-clouda-muted">
                       İptal
                     </span>
+                  ) : k.expiresAt && new Date(k.expiresAt) <= new Date() ? (
+                    <span className="rounded-btn border border-clouda-border px-2.5 py-1 text-xs text-clouda-muted">
+                      Süresi doldu
+                    </span>
                   ) : (
                     <span className="rounded-btn bg-clouda-indigoSoft px-2.5 py-1 text-xs font-medium text-clouda-indigo">
                       Aktif
+                    </span>
+                  )}
+                  {k.expiresAt && new Date(k.expiresAt) > new Date() && (
+                    <span className="mt-1 block text-[11px] text-clouda-muted">
+                      {new Date(k.expiresAt).toLocaleDateString("tr-TR")} tarihinde biter
                     </span>
                   )}
                 </td>

@@ -4,8 +4,23 @@ import { prisma } from "@/lib/prisma";
 import DashboardNav from "@/components/DashboardNav";
 import ApiKeysManager from "@/components/ApiKeysManager";
 import { CREDITS_PER_SEARCH, SIGNUP_FREE_CREDITS } from "@/lib/constants";
+import { recentSecurityEvents } from "@/lib/core/audit";
 
 export const dynamic = "force-dynamic";
+
+/** Event kinds are stored as stable identifiers; the wording lives here. */
+const SECURITY_LABELS: Record<string, string> = {
+  signup: "Hesap oluşturuldu",
+  signup_throttled: "Kayıt sınırlandı",
+  signup_weak_password: "Zayıf şifre reddedildi",
+  login_failed: "Başarısız giriş",
+  login_throttled: "Giriş sınırlandı",
+  auth_link_blocked: "Hesap bağlama engellendi",
+  key_created: "Anahtar oluşturuldu",
+  key_revoked: "Anahtar iptal edildi",
+  key_expired_use: "Süresi dolmuş anahtar denendi",
+  demo_throttled: "Demo sınırlandı",
+};
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -13,7 +28,7 @@ export default async function DashboardPage() {
 
   const userId = (session.user as typeof session.user & { id: string }).id;
 
-  const [user, apiKeys, usageLogs] = await Promise.all([
+  const [user, apiKeys, usageLogs, securityEvents] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.apiKey.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.usageLog.findMany({
@@ -21,6 +36,7 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
+    recentSecurityEvents(userId, 8),
   ]);
 
   if (user && !user.accountType) redirect("/onboarding");
@@ -80,6 +96,7 @@ export default async function DashboardPage() {
               creditsSpent: k.creditsSpent,
               lastUsedAt: k.lastUsedAt ? k.lastUsedAt.toISOString() : null,
               createdAt: k.createdAt.toISOString(),
+              expiresAt: k.expiresAt ? k.expiresAt.toISOString() : null,
             }))}
           />
         </div>
@@ -113,6 +130,47 @@ export default async function DashboardPage() {
                     <td className="py-3.5 pr-4 text-clouda-indigo">-{log.creditsUsed}</td>
                     <td className="py-3.5 pr-4 text-clouda-muted">
                       {log.createdAt.toLocaleString("tr-TR")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-10">
+          <p className="eyebrow-plain">hesap güvenliği</p>
+          <h2 className="display mt-3 text-2xl">Son güvenlik olayları</h2>
+          <p className="mt-3 max-w-2xl text-sm text-clouda-muted">
+            Tanımadığın bir giriş denemesi görürsen şifreni değiştir ve anahtarlarını iptal et.
+          </p>
+          <div className="card mt-5 overflow-x-auto p-6">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-clouda-border">
+                  <th className="eyebrow-plain pb-3">Olay</th>
+                  <th className="eyebrow-plain pb-3">Ayrıntı</th>
+                  <th className="eyebrow-plain pb-3">Tarih</th>
+                </tr>
+              </thead>
+              <tbody>
+                {securityEvents.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="py-8 text-center text-clouda-muted">
+                      Kayıtlı güvenlik olayı yok.
+                    </td>
+                  </tr>
+                )}
+                {securityEvents.map((event) => (
+                  <tr key={event.id} className="border-b border-clouda-border last:border-0">
+                    <td className="py-3.5 pr-4 font-mono text-xs text-clouda-indigo">
+                      {SECURITY_LABELS[event.kind] ?? event.kind}
+                    </td>
+                    <td className="max-w-xs truncate py-3.5 pr-4 text-clouda-muted">
+                      {event.detail ?? "—"}
+                    </td>
+                    <td className="py-3.5 pr-4 text-clouda-muted">
+                      {event.createdAt.toLocaleString("tr-TR")}
                     </td>
                   </tr>
                 ))}
