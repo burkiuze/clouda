@@ -61,6 +61,16 @@ export const CREDITS = {
   extractPerUrl: 1,
 } as const;
 
+/**
+ * How many sources a general query fans out to, for the marketing copy.
+ *
+ * The source of truth is OPEN_PROVIDERS in lib/search/providers.ts; this
+ * mirrors its length because importing that module into a static page would
+ * pull the whole scraping stack into the build. Keep the two in step — the
+ * site claimed eight while the array held seven.
+ */
+export const SEARCH_SOURCE_COUNT = 7;
+
 /** Backwards-compatible alias used by the dashboard and marketing copy. */
 export const CREDITS_PER_SEARCH = CREDITS.search;
 

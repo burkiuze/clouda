@@ -1,7 +1,7 @@
 import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
 import CodeSnippet from "@/components/CodeSnippet";
-import { CREDITS } from "@/lib/constants";
+import { CREDITS, SEARCH_SOURCE_COUNT } from "@/lib/constants";
 
 const features = [
   {
@@ -24,7 +24,7 @@ const features = [
 const stats = [
   { value: "2.000", label: "her yeni hesaba ücretsiz kredi" },
   { value: `${CREDITS.search} kredi`, label: "arama isteği başına sabit fiyat" },
-  { value: "8 kaynak", label: "her sorguda paralel sorgulanır" },
+  { value: `${SEARCH_SOURCE_COUNT} kaynak`, label: "her sorguda paralel sorgulanır" },
 ];
 
 export default function Home() {
