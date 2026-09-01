@@ -1,6 +1,7 @@
 import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
 import CodeSnippet from "@/components/CodeSnippet";
+import { CREDITS } from "@/lib/constants";
 
 const features = [
   {
@@ -15,15 +16,15 @@ const features = [
   },
   {
     title: "Kredi bazlı, tahmin edilebilir maliyet",
-    body: "Her arama isteği 10 kredi. Sürpriz fatura yok; kullanımını ve kalan kredini panelden anlık takip edersin.",
+    body: `Her arama isteği ${CREDITS.search} kredi. Sürpriz fatura yok; kullanımını ve kalan kredini panelden anlık takip edersin.`,
     active: false,
   },
 ];
 
 const stats = [
   { value: "2.000", label: "her yeni hesaba ücretsiz kredi" },
-  { value: "10 kredi", label: "arama isteği başına sabit fiyat" },
-  { value: "6 kaynak", label: "her sorguda paralel sorgulanır" },
+  { value: `${CREDITS.search} kredi`, label: "arama isteği başına sabit fiyat" },
+  { value: "8 kaynak", label: "her sorguda paralel sorgulanır" },
 ];
 
 export default function Home() {

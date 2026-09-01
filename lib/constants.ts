@@ -32,29 +32,33 @@ export const CAPABILITY_LABELS: Record<Capability, { title: string; description:
 };
 
 /**
- * Credit costs. Search is the unit of account; the heavier operations are
- * priced against the work they actually do (a research run is many searches
- * plus many page fetches, a browser step is one fetch).
+ * Credit costs. Search is the unit of account at 2 credits, and everything
+ * else is priced in multiples of it against the work it actually does — a
+ * research run is many searches plus many page fetches, a browser step is one
+ * fetch. The whole table moves together: pricing one operation without the
+ * others would make the ratios lie about the cost.
+ *
+ * At this rate the 2000 free credits are about a thousand searches.
  */
 export const CREDITS = {
   /** Full search: discovery across every source plus page extraction. */
-  search: 10,
+  search: 2,
   /**
    * Discovery only, when the caller asked for no page content. It is most of
    * the value and a fraction of the work — no page is fetched — so charging
    * the full rate for it would be charging for work not done.
    */
-  searchNoContent: 4,
+  searchNoContent: 1,
   /** Charged once per research run, plus perStep for each search round. */
-  researchBase: 40,
-  researchPerSearch: 10,
-  browseBase: 10,
-  browsePerStep: 5,
-  monitorCheck: 5,
-  citations: 10,
+  researchBase: 8,
+  researchPerSearch: 2,
+  browseBase: 2,
+  browsePerStep: 1,
+  monitorCheck: 1,
+  citations: 2,
   /** Extraction is one fetch per URL and no discovery, so it is cheaper than search. */
-  extractBase: 2,
-  extractPerUrl: 3,
+  extractBase: 1,
+  extractPerUrl: 1,
 } as const;
 
 /** Backwards-compatible alias used by the dashboard and marketing copy. */

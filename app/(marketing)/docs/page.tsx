@@ -30,6 +30,13 @@ const endpoints = [
   },
   {
     method: "POST",
+    path: "/api/v1/answer",
+    capability: "citations",
+    cost: `${CREDITS.search + CREDITS.citations} kredi`,
+    summary: "Soruyu kaynaklı, alıntıya dayalı bir cevaba çevirir.",
+  },
+  {
+    method: "POST",
     path: "/api/v1/extract",
     capability: "her zaman açık",
     cost: `${CREDITS.extractBase} + adres başına ${CREDITS.extractPerUrl}`,
@@ -314,6 +321,53 @@ Content-Type: application/json`}</Code>
             <code className="font-mono">submit</code> yalnızca GET sorgu parametresi ekler — durum
             değiştiren POST gönderimi bilinçli olarak desteklenmez, çünkü otonom bir ajanın bu API
             üzerinden satın alma ya da gönderi yapabilmesi istenmez.
+          </p>
+        </Section>
+
+        <Section id="answer">
+          <h2 className="display text-3xl">Answer</h2>
+          <p className="mt-4 text-clouda-muted">
+            Soru soran bir ajan genelde cevabı ister; kendisinin getirip okuyup
+            karşılaştırması gereken bir sonuç listesini değil. Bu uç nokta o gidiş
+            dönüşü sunucu tarafında yapar: arar, içeriği çıkarır, birden fazla bağımsız
+            kaynağın aynı şekilde ifade ettiği cümleleri gruplar ve ne kadar
+            desteklendiklerine göre sıralayıp döner.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            Cevap bilerek <strong className="font-medium text-clouda-ink">alıntıya
+            dayalıdır</strong>: dönen her cümle bir kaynaktan birebir alınmıştır ve
+            geldiği URL&apos;yi taşır. Yani buradan uydurma bir bilgi çıkamaz — kötü
+            senaryo işe yaramayan bir cevaptır, uydurulmuş bir cevap değil. Kaynaklar
+            çelişiyorsa çelişki çözülmez, olduğu gibi döndürülür; hangisinin doğru
+            olduğuna karar vermek çağıranın işidir.
+          </p>
+          <Code>{`POST /api/v1/answer
+
+{
+  "query": "postgres index bloat neden olur",
+  "max_sentences": 4,
+  "max_sources": 8
+}`}</Code>
+          <Code>{`{
+  "answered": true,
+  "answer": [
+    {
+      "text": "…",
+      "confidence": 0.71,
+      "independent_sources": 3,
+      "basis": ["3 bağımsız kaynak", "yüksek güvenilirlik"],
+      "citations": [{ "url": "…", "title": "…", "quote": "…" }]
+    }
+  ],
+  "contested": 0,
+  "sources": [{ "title": "…", "url": "…", "credibility": 0.85 }]
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Yeterince desteklenen bir cümle bulunamazsa{" "}
+            <code className="font-mono">answered: false</code> döner ve sebebi belirtilir;
+            kaynaklar yine döndürülür. Dürüst bir &quot;bilmiyorum&quot;, kendinden emin
+            bir tahminden iyidir. <code className="font-mono">citations</code> özelliği
+            açık bir anahtar gerekir.
           </p>
         </Section>
 

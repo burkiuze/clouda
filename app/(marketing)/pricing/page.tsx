@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CREDITS, SIGNUP_FREE_CREDITS } from "@/lib/constants";
 
 const tiers = [
   {
@@ -6,14 +7,14 @@ const tiers = [
     price: "0₺",
     period: "kayıt olur olmaz",
     credits: "2.000 kredi",
-    features: ["≈200 arama isteği", "Tüm API özellikleri", "Kredi kartı gerekmez"],
+    features: [`≈${Math.floor(SIGNUP_FREE_CREDITS / CREDITS.search).toLocaleString("tr-TR")} arama isteği`, "Tüm API özellikleri", "Kredi kartı gerekmez"],
     cta: "Ücretsiz başla",
     href: "/login",
     featured: false,
   },
   {
     name: "Kullandıkça öde",
-    price: "10 kredi",
+    price: `${CREDITS.search} kredi`,
     period: "arama isteği başına",
     credits: "İhtiyacın kadar",
     features: [
@@ -46,7 +47,7 @@ export default function PricingPage() {
         Basit, kredi bazlı fiyatlandırma
       </h1>
       <p className="mt-6 max-w-lg text-lg text-clouda-muted">
-        Her yeni hesap 2000 ücretsiz kredi ile başlar. Bir arama isteği 10 kredi tutar — sürpriz
+        Her yeni hesap 2000 ücretsiz kredi ile başlar. Bir arama isteği {CREDITS.search} kredi tutar — sürpriz
         yok.
       </p>
 
