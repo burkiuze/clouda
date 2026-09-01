@@ -75,8 +75,19 @@ export interface NewsItem {
   lang: "tr" | "en";
 }
 
-/** How long a pulled corpus is served for, and when a refresh is triggered. */
-const CORPUS_TTL_SECONDS = 600;
+/**
+ * How long a pulled corpus is served for, and when a refresh is triggered.
+ *
+ * These are deliberately far apart. The refresh threshold is what keeps the
+ * corpus current: any request past it triggers a background pull, so under
+ * traffic the headlines are never more than a couple of minutes old. The
+ * expiry is only a floor on how stale it may get during a quiet spell — and it
+ * is long because the alternative is worse. Measured: with a ten-minute
+ * expiry, a news search four minutes after the corpus lapsed got nothing at
+ * all, while the articles it wanted were sitting in a row that had just been
+ * declared too old. An hour-old headline beats no headline.
+ */
+const CORPUS_TTL_SECONDS = 3600;
 const REFRESH_AFTER_SECONDS = 150;
 
 /** Cap on the cold path, where nothing is cached and the caller is waiting. */

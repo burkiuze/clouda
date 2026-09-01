@@ -196,6 +196,21 @@ function applyDomainFilter(
   });
 }
 
+/**
+ * Normalises a publication date to ISO 8601.
+ *
+ * Sources disagree about format — an RSS-backed one hands back RFC-822
+ * ("Mon, 31 Aug 2026 20:07:31 GMT") while an API-backed one hands back ISO —
+ * and that disagreement was reaching callers in the same `published_at` field,
+ * leaving every consumer to guess. Anything unparseable is dropped rather than
+ * passed through: a date a caller cannot parse is worse than no date.
+ */
+function isoDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const ts = Date.parse(value);
+  return Number.isNaN(ts) ? null : new Date(ts).toISOString();
+}
+
 /** Canonical form of a URL, so the same page from two indexes counts once. */
 function urlKey(raw: string): string {
   try {
@@ -737,8 +752,8 @@ export async function searchWeb(
       url: item.raw.url,
       snippet: item.raw.snippet,
       content: item.content,
-      publishedAt: item.publishedAt,
-      updatedAt: item.updatedAt,
+      publishedAt: isoDate(item.publishedAt),
+      updatedAt: isoDate(item.updatedAt),
       source: provider,
       scores: scoreResult({
         query: plan.optimized,
