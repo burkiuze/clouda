@@ -13,11 +13,14 @@ import { RawResult } from "@/lib/search/types";
  * They are not listed, because a provider that never answers still costs every
  * query a timeout.
  *
- * Marginalia is the general-web index, and the only one here that indexes the
- * open web broadly rather than one vertical. Its public API is published under
- * CC-BY-NC-SA 4.0 — attribution, non-commercial. That licence is a constraint
- * on this product, not a detail: see README before charging for traffic that
- * depends on it.
+ * Marginalia and mwmbl are the general-web indexes — the only two measured
+ * here that crawl the open web broadly rather than one vertical, and both are
+ * kept because each is individually unreliable: Marginalia answered in 202ms
+ * and then not at all within twelve seconds, minutes apart.
+ *
+ * Marginalia's public API is published under CC-BY-NC-SA 4.0 — attribution,
+ * non-commercial. That licence is a constraint on this product, not a detail:
+ * see README before charging for traffic that depends on it.
  *
  * The rest are verticals. They are asked in parallel and fused by rank, so a
  * question gets the union of an encyclopaedia, a programming Q&A site, a code
@@ -36,16 +39,12 @@ export interface Provider {
 }
 
 /**
- * In a parallel fan-out the slowest source sets the response time, so the
- * budget is per source rather than shared. Marginalia gets the longest one: it
- * is the only general-web index here, and a search without it falls back to
- * verticals that cannot answer a general question. The rest are fast APIs
- * where a slow reply means trouble, not depth.
+ * In a parallel fan-out the slowest source sets the response time, so no source
+ * is allowed to hold the request open. Marginalia in particular contributes
+ * when it answers quickly and is skipped when it does not — waiting longer for
+ * it measurably cost seconds and still returned nothing.
  */
 const PROVIDER_TIMEOUT = 2500;
-// Marginalia's public API rate-limits, and a fan-out cannot wait on a source
-// that may simply refuse: it contributes when it answers quickly and is
-// skipped when it does not.
 const MARGINALIA_TIMEOUT = 2500;
 
 async function getJson<T>(url: string, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT): Promise<T | null> {
@@ -84,6 +83,38 @@ const marginalia: Provider = {
         title: r.title as string,
         url: r.url as string,
         snippet: plain(r.description),
+        publishedAt: null,
+      }));
+  },
+};
+
+/**
+ * A second general-web index, and the reason there is one: Marginalia's public
+ * API is erratic. Measured minutes apart it answered in 202ms and then failed
+ * to answer within twelve seconds. Two independent open indexes mean a general
+ * question still reaches the open web when either is having a bad minute.
+ *
+ * mwmbl is a non-profit, open-source crawl with a public API and no key.
+ */
+const mwmbl: Provider = {
+  name: "mwmbl",
+  available: () => true,
+  async search(query, limit) {
+    const data = await getJson<
+      { url?: string; title?: { value?: string }[]; extract?: { value?: string }[] }[]
+    >(`https://api.mwmbl.org/api/v1/search/?s=${encodeURIComponent(query)}`);
+
+    // Titles and extracts arrive as runs of text marked bold where they match.
+    const join = (parts: { value?: string }[] | undefined) =>
+      (parts ?? []).map((p) => p.value ?? "").join("").trim();
+
+    return (data ?? [])
+      .filter((r) => r.url && join(r.title))
+      .slice(0, limit)
+      .map((r) => ({
+        title: join(r.title),
+        url: r.url as string,
+        snippet: join(r.extract),
         publishedAt: null,
       }));
   },
@@ -352,6 +383,7 @@ const googleNews: Provider = {
 
 export const OPEN_PROVIDERS: Provider[] = [
   marginalia,
+  mwmbl,
   wikipedia,
   stackexchange,
   github,
@@ -373,13 +405,13 @@ export function openProvidersForIntent(intent: string): Provider[] {
   switch (intent) {
     case "news":
     case "finance":
-      return [marginalia, googleNews, wikipedia];
+      return [marginalia, mwmbl, googleNews, wikipedia];
     case "academic":
-      return [marginalia, openalex, wikipedia];
+      return [marginalia, mwmbl, openalex, wikipedia];
     case "technical":
-      return [marginalia, stackexchange, github, hackernews, npm];
+      return [marginalia, mwmbl, stackexchange, github, hackernews, npm];
     case "product":
-      return [marginalia, googleNews, hackernews, wikipedia];
+      return [marginalia, mwmbl, googleNews, hackernews, wikipedia];
     default:
       return OPEN_PROVIDERS;
   }
