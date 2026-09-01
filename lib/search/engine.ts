@@ -2,6 +2,7 @@ import { cacheGet, cacheSet, ttlForIntent } from "@/lib/core/cache";
 import { offload } from "@/lib/core/offload";
 import { CloudaError } from "@/lib/core/errors";
 import { filterUnsafe } from "@/lib/search/safety";
+import { hostMatches } from "@/lib/core/security";
 import { fetchAndExtract } from "@/lib/search/extract";
 import { planQuery } from "@/lib/search/query";
 import { scoreResult, MIN_USEFUL_RELEVANCE } from "@/lib/search/scoring";
@@ -137,6 +138,32 @@ function preScore(result: RawResult, plan: QueryPlan): number {
   // An exact phrase in the title is the strongest cheap signal available.
   if (title.includes(plan.optimized.toLowerCase())) score += 0.3;
   return score;
+}
+
+/**
+ * Applies the caller's per-request domain filter to the candidate pool.
+ *
+ * Runs before enrichment on purpose: filtering after the fetches would pay for
+ * pages it then discards, so a narrowed search is a cheaper search as well as
+ * a more precise one.
+ */
+function applyDomainFilter(
+  results: RawResult[],
+  filter: { include?: string[]; exclude?: string[] } | undefined
+): RawResult[] {
+  if (!filter || (!filter.include?.length && !filter.exclude?.length)) return results;
+
+  return results.filter((result) => {
+    let host: string;
+    try {
+      host = new URL(result.url).hostname;
+    } catch {
+      return false;
+    }
+    if (filter.exclude?.some((d) => hostMatches(host, d))) return false;
+    if (filter.include?.length) return filter.include.some((d) => hostMatches(host, d));
+    return true;
+  });
 }
 
 /** Canonical form of a URL, so the same page from two indexes counts once. */
@@ -569,8 +596,17 @@ export async function searchWeb(
   const plan = planQuery(trimmed, { freshnessHours: options.freshnessHours });
   const freshnessHours = options.freshnessHours ?? plan.suggestedFreshnessHours;
 
+  // The domain filter is part of the cache's identity: a result set narrowed
+  // to one host cannot answer the same question asked of the whole web.
+  const filterKey = [
+    ...(options.domainFilter?.include ?? []).map((d) => `+${d.toLowerCase()}`),
+    ...(options.domainFilter?.exclude ?? []).map((d) => `-${d.toLowerCase()}`),
+  ]
+    .sort()
+    .join(",");
+
   const lookup = {
-    namespace: "search",
+    namespace: filterKey ? `search|${filterKey}` : "search",
     query: plan.optimized,
     locale,
     maxResults,
@@ -627,7 +663,7 @@ export async function searchWeb(
   // head of it. Cutting the pool before ranking wasted the extra candidates;
   // fetching all of them wasted the caller's time. Ordering first and fetching
   // second keeps the choice and drops the cost.
-  const raw = [...candidates]
+  const raw = applyDomainFilter(candidates, options.domainFilter)
     .sort((a, b) => preScore(b, plan) - preScore(a, plan))
     .slice(0, maxResults + ENRICH_HEADROOM);
 

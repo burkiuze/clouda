@@ -46,6 +46,34 @@ export function parseLocale(value: unknown): string | undefined {
   throw new CloudaError("invalid_request", `Geçersiz locale: ${String(value)}. Örnek: tr-TR`);
 }
 
+/**
+ * Parses a per-request domain list. Deliberately strict about shape — a
+ * silently ignored filter would return the whole web to a caller who asked for
+ * one site and believed they had narrowed it.
+ */
+export function parseDomains(value: unknown, field: string): string[] | undefined {
+  if (value == null) return undefined;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    throw new CloudaError("invalid_request", `'${field}' bir alan adı dizisi olmalı.`);
+  }
+  if (value.length > 25) {
+    throw new CloudaError("invalid_request", `'${field}' en fazla 25 alan adı içerebilir.`);
+  }
+
+  return value.map((raw) => {
+    const domain = raw
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^\*\./, "")
+      .replace(/\/.*$/, "");
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
+      throw new CloudaError("invalid_request", `Geçersiz alan adı: ${raw}`);
+    }
+    return domain;
+  });
+}
+
 export function parseInt_(value: unknown, min: number, max: number, fallback: number): number {
   if (value == null) return fallback;
   const n = Number(value);

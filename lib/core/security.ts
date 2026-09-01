@@ -54,7 +54,12 @@ export interface DomainPolicy {
   blockedDomains?: string[];
 }
 
-function hostMatches(hostname: string, pattern: string): boolean {
+/**
+ * Whether a hostname falls under a domain pattern. "example.com" matches the
+ * host itself and any subdomain of it; a leading "*." or "." is accepted and
+ * ignored, since both spellings are what people reach for.
+ */
+export function hostMatches(hostname: string, pattern: string): boolean {
   const host = hostname.toLowerCase();
   const p = pattern.toLowerCase().replace(/^\*\./, "").replace(/^\./, "");
   return host === p || host.endsWith(`.${p}`);

@@ -176,7 +176,9 @@ Content-Type: application/json`}</Code>
   "freshness": "week",       // hour | day | week | month | year | saat sayısı
   "include_content": true,   // sayfa metni çıkarılsın mı
   "no_cache": false,         // cache'i tamamen atla
-  "mode": "results"          // results | sources | claims
+  "mode": "results",         // results | sources | claims
+  "include_domains": ["postgresql.org"],  // yalnızca bu alan adları (alt alanlar dahil)
+  "exclude_domains": ["pinterest.com"]    // bu alan adları hiç dönmesin
 }`}</Code>
           <Code>{`{
   "query": "vektör veritabanı karşılaştırması",
@@ -213,6 +215,15 @@ Content-Type: application/json`}</Code>
             indirilmez, daha hızlıdır). <code className="font-mono">claims</code> sonuçlardan iddia
             çıkarır ve kaynaklarla eşler — <code className="font-mono">citations</code> özelliği
             gerektirir.
+          </p>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Alan adı filtresi.</strong>{" "}
+            <code className="font-mono">include_domains</code> ve{" "}
+            <code className="font-mono">exclude_domains</code> sayfa indirilmeden önce uygulanır —
+            yani aramayı daraltmak onu ucuzlatır da. Alt alanlar kapsanır:{" "}
+            <code className="font-mono">bbc.co.uk</code>, <code className="font-mono">www.bbc.co.uk</code>{" "}
+            adresini de tutar. Bu filtre anahtarın kendi alan adı politikasından ayrıdır: politika
+            hesabın neye erişebileceğini, filtre tek bir sorunun neyle ilgilendiğini söyler.
           </p>
         </Section>
 

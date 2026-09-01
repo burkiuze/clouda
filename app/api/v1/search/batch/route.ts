@@ -1,6 +1,12 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
-import { parseFreshness, parseLocale, parseInt_, shapeResult } from "@/lib/api/shapes";
+import {
+  parseDomains,
+  parseFreshness,
+  parseLocale,
+  parseInt_,
+  shapeResult,
+} from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
 import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
@@ -15,6 +21,8 @@ interface BatchBody {
   freshness?: string | number;
   include_content?: boolean;
   no_cache?: boolean;
+  include_domains?: string[];
+  exclude_domains?: string[];
 }
 
 /** Ceiling on one batch. Beyond this the fan-out competes with itself. */
@@ -71,6 +79,10 @@ export const POST = withApi(
       includeContent: body.include_content !== false,
       noCache: body.no_cache === true,
       domainPolicy: ctx.policy,
+      domainFilter: {
+        include: parseDomains(body.include_domains, "include_domains"),
+        exclude: parseDomains(body.exclude_domains, "exclude_domains"),
+      },
     };
 
     const answers = await Promise.all(

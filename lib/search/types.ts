@@ -62,6 +62,13 @@ export interface SearchOptions {
   /** Bypass the cache entirely. */
   noCache?: boolean;
   domainPolicy?: { allowedDomains?: string[]; blockedDomains?: string[] };
+  /**
+   * Per-request domain filter, separate from the key's policy: the policy says
+   * what an account is permitted to reach, this says what one question is
+   * interested in. Applied to candidates before any page is fetched, so
+   * narrowing the search also narrows the work.
+   */
+  domainFilter?: { include?: string[]; exclude?: string[] };
 }
 
 export interface SearchResponse {

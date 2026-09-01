@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
-import { parseFreshness, parseLocale, parseInt_, parseMode, shapeResult } from "@/lib/api/shapes";
+import {
+  parseDomains,
+  parseFreshness,
+  parseLocale,
+  parseInt_,
+  parseMode,
+  shapeResult,
+} from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
 import { verifyClaims } from "@/lib/research/citations";
 import { CREDITS } from "@/lib/constants";
@@ -17,6 +24,8 @@ interface SearchBody {
   include_content?: boolean;
   no_cache?: boolean;
   mode?: string;
+  include_domains?: string[];
+  exclude_domains?: string[];
 }
 
 /**
@@ -48,6 +57,10 @@ export const POST = withApi(
       includeContent: mode === "sources" ? false : body.include_content !== false,
       noCache: body.no_cache === true,
       domainPolicy: ctx.policy,
+      domainFilter: {
+        include: parseDomains(body.include_domains, "include_domains"),
+        exclude: parseDomains(body.exclude_domains, "exclude_domains"),
+      },
     });
 
     // A cached answer costs nothing, and a request that declined page content
