@@ -32,100 +32,70 @@ async function text(url: string): Promise<string> {
 
 const probes: Probe[] = [
   {
-    name: "bluesky",
-    run: async (q) => {
-      const d = await json<{ posts?: { record?: { text?: string }; author?: { handle?: string } }[] }>(
-        `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=5`
-      );
-      const h = d.posts ?? [];
-      return {
-        count: h.length,
-        sample: h.slice(0, 3).map((p) => `@${p.author?.handle}: ${(p.record?.text ?? "").slice(0, 70)}`),
-      };
-    },
-  },
-  {
-    name: "mastodon-tag",
-    run: async (q) => {
-      const tag = q.split(/\s+/)[0].replace(/[^a-zA-Z0-9]/g, "");
-      const d = await json<{ content?: string; account?: { acct?: string } }[]>(
-        `https://mastodon.social/api/v1/timelines/tag/${encodeURIComponent(tag)}?limit=5`
-      );
-      return {
-        count: d.length,
-        sample: d.slice(0, 3).map((p) => `@${p.account?.acct}: ${(p.content ?? "").replace(/<[^>]+>/g, "").slice(0, 70)}`),
-      };
-    },
-  },
-  {
-    name: "lemmy",
-    run: async (q) => {
-      const d = await json<{ posts?: { post?: { name?: string } }[] }>(
-        `https://lemmy.world/api/v3/search?q=${encodeURIComponent(q)}&type_=Posts&limit=5`
-      );
-      const h = d.posts ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((p) => p.post?.name ?? "?") };
-    },
-  },
-  {
-    name: "reddit-rss",
-    run: async (q) => {
-      const body = await text(`https://www.reddit.com/search.rss?q=${encodeURIComponent(q)}&limit=5`);
-      const titles = [...body.matchAll(/<title>([^<]+)<\/title>/g)].map((m) => m[1]);
-      return { count: Math.max(0, titles.length - 1), sample: titles.slice(1, 4) };
-    },
-  },
-  {
-    name: "youtube-oembed",
+    name: "yt-watch-captiontracks",
     run: async () => {
-      const d = await json<{ title?: string; author_name?: string }>(
-        `https://www.youtube.com/oembed?url=${encodeURIComponent("https://www.youtube.com/watch?v=dQw4w9WgXcQ")}&format=json`
-      );
-      return { count: d.title ? 1 : 0, sample: [`${d.title} — ${d.author_name}`] };
+      const body = await text("https://www.youtube.com/watch?v=jNQXAC9IVRw");
+      const m = body.match(/"captionTracks":(\[.*?\])/);
+      if (!m) return { count: 0, sample: ["captionTracks bulunamadi"] };
+      const tracks = JSON.parse(m[1]) as { baseUrl?: string; languageCode?: string }[];
+      return {
+        count: tracks.length,
+        sample: tracks.slice(0, 3).map((t) => `${t.languageCode}: ${(t.baseUrl ?? "").slice(0, 60)}`),
+      };
     },
   },
   {
-    name: "youtube-rss-channel",
+    name: "yt-timedtext-direct",
+    run: async () => {
+      const body = await text("https://www.youtube.com/api/timedtext?v=jNQXAC9IVRw&lang=en&fmt=json3");
+      return { count: body.length > 50 ? 1 : 0, sample: [body.slice(0, 100)] };
+    },
+  },
+  {
+    name: "yt-player-meta",
+    run: async () => {
+      const body = await text("https://www.youtube.com/watch?v=jNQXAC9IVRw");
+      const title = body.match(/"title":\{"simpleText":"([^"]+)"/)?.[1];
+      const desc = body.match(/"shortDescription":"([^"]{0,80})/)?.[1];
+      return { count: title ? 1 : 0, sample: [`${title} | ${desc}`] };
+    },
+  },
+  {
+    name: "bluesky-retry",
+    run: async (q) => {
+      const d = await json<{ posts?: { record?: { text?: string } }[] }>(
+        `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=5`
+      );
+      const h = d.posts ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => (x.record?.text ?? "").slice(0, 60)) };
+    },
+  },
+  {
+    name: "youtube-rss-retry",
     run: async () => {
       const body = await text(
-        "https://www.youtube.com/feeds/videos.xml?channel_id=UCXuqSBlHAE6Xw-yeJA0Tunw"
+        "https://www.youtube.com/feeds/videos.xml?channel_id=UC_x5XG1OV2P6uZZ5FSM9Ttw"
       );
       const titles = [...body.matchAll(/<title>([^<]+)<\/title>/g)].map((m) => m[1]);
       return { count: Math.max(0, titles.length - 1), sample: titles.slice(1, 4) };
     },
   },
   {
-    name: "vimeo-oembed",
+    name: "vimeo-retry",
     run: async () => {
       const d = await json<{ title?: string; author_name?: string }>(
-        "https://vimeo.com/api/oembed.json?url=https%3A%2F%2Fvimeo.com%2F76979871"
+        "https://vimeo.com/api/oembed.json?url=https%3A%2F%2Fvimeo.com%2F1084537"
       );
       return { count: d.title ? 1 : 0, sample: [`${d.title} — ${d.author_name}`] };
     },
   },
   {
-    name: "youtube-search-html",
+    name: "youtube-search-titles",
     run: async (q) => {
       const body = await text(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`);
-      const ids = [...body.matchAll(/"videoId":"([\w-]{11})"/g)].map((m) => m[1]);
-      return { count: new Set(ids).size, sample: [...new Set(ids)].slice(0, 3) };
-    },
-  },
-  {
-    name: "nitter-x",
-    run: async (q) => {
-      const body = await text(`https://nitter.net/search?f=tweets&q=${encodeURIComponent(q)}`);
-      const items = [...body.matchAll(/class="tweet-content[^"]*"[^>]*>([^<]{10,})/g)].map((m) => m[1]);
-      return { count: items.length, sample: items.slice(0, 3).map((s) => s.slice(0, 70)) };
-    },
-  },
-  {
-    name: "tiktok-oembed",
-    run: async () => {
-      const d = await json<{ title?: string; author_name?: string }>(
-        "https://www.tiktok.com/oembed?url=https%3A%2F%2Fwww.tiktok.com%2F%40scout2015%2Fvideo%2F6718335390845095173"
-      );
-      return { count: d.title ? 1 : 0, sample: [`${d.title} — ${d.author_name}`] };
+      const ids = [...new Set([...body.matchAll(/"videoId":"([\w-]{11})"/g)].map((m) => m[1]))];
+      const titles = [...body.matchAll(/"title":\{"runs":\[\{"text":"([^"]{5,80})"/g)].map((m) => m[1]);
+      return { count: ids.length, sample: titles.slice(0, 3) };
     },
   },
 ];
