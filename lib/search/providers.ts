@@ -29,6 +29,12 @@ import { RawResult } from "@/lib/search/types";
 
 export interface Provider {
   name: string;
+  /**
+   * "web" sources index the open web; "vertical" ones cover a single slice of
+   * it. Losing a vertical costs a slice, losing both web indexes costs the web
+   * itself, so the two are not worth the same wait.
+   */
+  tier: "web" | "vertical";
   available(): boolean;
   search(
     query: string,
@@ -66,6 +72,7 @@ function plain(text: string | undefined): string {
 
 const marginalia: Provider = {
   name: "marginalia",
+  tier: "web",
   available: () => true,
   async search(query, limit) {
     const data = await getJson<{
@@ -98,6 +105,7 @@ const marginalia: Provider = {
  */
 const mwmbl: Provider = {
   name: "mwmbl",
+  tier: "web",
   available: () => true,
   async search(query, limit) {
     const data = await getJson<
@@ -128,6 +136,7 @@ const mwmbl: Provider = {
 /* ------------------------------------------------------------- verticals */
 
 const wikipedia: Provider = {
+  tier: "vertical",
   name: "wikipedia",
   available: () => true,
   async search(query, limit, locale) {
@@ -185,6 +194,7 @@ const SE_SITES: { site: string; host: string }[] = [
 ];
 
 const stackexchange: Provider = {
+  tier: "vertical",
   name: "stackexchange",
   available: () => true,
   async search(query, limit) {
@@ -232,6 +242,7 @@ const stackexchange: Provider = {
 };
 
 const github: Provider = {
+  tier: "vertical",
   name: "github",
   available: () => true,
   async search(query, limit) {
@@ -261,6 +272,7 @@ const github: Provider = {
 };
 
 const hackernews: Provider = {
+  tier: "vertical",
   name: "hackernews",
   available: () => true,
   async search(query, limit) {
@@ -293,6 +305,7 @@ const hackernews: Provider = {
  * words and returned papers about unrelated fields.
  */
 const openalex: Provider = {
+  tier: "vertical",
   name: "openalex",
   available: () => true,
   async search(query, limit) {
@@ -332,6 +345,7 @@ function invertedAbstract(index: Record<string, number[]> | undefined): string {
 }
 
 const npm: Provider = {
+  tier: "vertical",
   name: "npm",
   available: () => true,
   async search(query, limit) {
@@ -355,6 +369,7 @@ const npm: Provider = {
 };
 
 const googleNews: Provider = {
+  tier: "vertical",
   name: "google-news",
   available: () => true,
   async search(query, limit, locale) {

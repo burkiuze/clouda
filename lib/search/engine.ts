@@ -164,11 +164,15 @@ function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
 }
 
 /**
- * How long the fan-out is given before the results in hand are used. Sources
- * still have their own, longer timeouts; this is the point past which waiting
- * costs the caller more than the missing source is worth.
+ * How long the fan-out is given before the results in hand are used.
+ *
+ * Split by tier, because the two are not worth the same wait. Dropping a
+ * vertical costs one slice of the web; dropping both general indexes costs the
+ * web itself — a uniform 1.5s cut Marginalia off and left a technical question
+ * answered by Wikipedia and Stack Overflow alone. Verticals are fast APIs, so
+ * one that has not answered in 1.5s is in trouble rather than being thorough.
  */
-const DISCOVERY_DEADLINE_MS = 1500;
+const DISCOVERY_DEADLINE_MS = { web: 2600, vertical: 1500 } as const;
 
 /**
  * Resolves with the promise's value, or null once `ms` has passed. The loser
@@ -264,17 +268,18 @@ async function discover(
   // is not cancelled: it finishes in the background and writes to the provider
   // cache, so the next request for this query gets it for free.
   const open = openProvidersForIntent(plan.intent);
-  const deadline = Date.now() + DISCOVERY_DEADLINE_MS;
+  const startedAt = Date.now();
 
   const inFlight = open.map((provider) => ({
     name: provider.name,
+    deadline: startedAt + DISCOVERY_DEADLINE_MS[provider.tier],
     answer: runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded).then(
       (results) => filterUnsafe(results)
     ),
   }));
 
   let settled = await Promise.all(
-    inFlight.map(async ({ name, answer }) => {
+    inFlight.map(async ({ name, answer, deadline }) => {
       const inTime = await raceDeadline(answer, deadline - Date.now());
       if (inTime === null) {
         degraded.push({ provider: name, reason: "deadline" });
@@ -513,7 +518,7 @@ export async function searchWeb(
   // Drop the plainly off-topic, but never to the point of returning nothing:
   // a weak answer beats an empty one when no source covered the question.
   const onTopic = results.filter((r) => r.scores.relevance >= MIN_USEFUL_RELEVANCE);
-  if (onTopic.length >= Math.min(3, results.length)) results = onTopic;
+  if (onTopic.length > 0) results = onTopic;
 
   results.sort((a, b) => b.scores.overall - a.scores.overall);
   results = diversifyByHost(results, maxResults);
