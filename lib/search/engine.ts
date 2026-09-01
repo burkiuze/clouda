@@ -57,12 +57,28 @@ const ENRICH_HEADROOM = 1;
 const MAX_FETCHES = 5;
 
 /**
- * Hosts whose links are wrappers rather than pages. Google News RSS items are
- * base64 redirect stubs: fetching one costs a full round trip and consistently
- * extracts nothing, which is exactly the "içerik-çıkarılamadı" signal those
- * results kept carrying. Their own snippet is the better answer and free.
+ * Hosts a fetch cannot get anything out of, so they are never fetched.
+ *
+ * Google News RSS items are base64 redirect stubs rather than pages: one costs
+ * a full round trip and consistently extracts nothing, which is exactly the
+ * "içerik-çıkarılamadı" signal those results kept carrying.
+ *
+ * The Stack Exchange family is here for a different reason, and it was
+ * measured: stackoverflow.com and serverfault.com both return zero characters
+ * in about 160ms from this deployment — far too fast to be a timeout, so it is
+ * a refusal, the same datacenter-IP wall that keeps their search out of the
+ * provider list. Their API already gives us the question and top answer text
+ * as a snippet, which is what those results were falling back to anyway; now
+ * they fall back to it without spending a fetch out of the budget first.
  */
-const UNEXTRACTABLE = [/(^|\.)news\.google\.com$/i];
+const UNEXTRACTABLE = [
+  /(^|\.)news\.google\.com$/i,
+  /(^|\.)stackoverflow\.com$/i,
+  /(^|\.)serverfault\.com$/i,
+  /(^|\.)superuser\.com$/i,
+  /(^|\.)askubuntu\.com$/i,
+  /(^|\.)stackexchange\.com$/i,
+];
 
 function isUnextractable(url: string): boolean {
   try {
@@ -76,8 +92,22 @@ function isUnextractable(url: string): boolean {
  * Wall-clock cut-off for content extraction, measured from the start of the
  * request. Discovery has already spent part of the budget by the time this
  * stage runs, so it is an absolute deadline rather than a per-stage timeout.
+ *
+ * Set from measurement, not preference. A page that extracts at all does so in
+ * 358-891ms from this deployment, p50 588ms. The previous 1.2s left barely
+ * 600ms after discovery — enough to start every fetch and finish none, which
+ * is the worst of both: a search that spent its whole budget and returned
+ * every result on its snippet. The stage still ends the moment its fetches
+ * resolve, so this ceiling only costs time on searches that were going to use
+ * it.
  */
-const ENRICH_DEADLINE_MS = 1200;
+const ENRICH_DEADLINE_MS = 1400;
+
+/**
+ * Ceiling on a single page fetch. Nothing measured here has extracted past
+ * 891ms, so a page still running at a second is not slow, it is stuck.
+ */
+const PAGE_TIMEOUT_MS = 1000;
 
 /**
  * Providers are asked for more than the caller wants. Deduplication, the
@@ -485,11 +515,11 @@ async function enrich(
   }
 
   // Results are already ordered by the cheap pre-score, so the budget goes to
-  // the ones most likely to be published.
-  // A speculative fetch that the final ranking kept counts against the budget
-  // like any other; one it discarded is sunk cost, not a charge against the
-  // pages that did make the cut. Subtracting them all up front meant a search
-  // whose early candidates lost could fetch only two of its five.
+  // the ones most likely to be worth reading. A speculative fetch the final
+  // ranking kept counts against it like any other; one the ranking discarded
+  // is sunk cost, not a charge against the pages that did make the cut —
+  // subtracting them all up front meant a search whose early candidates lost
+  // could fetch only two of its five.
   let budget = MAX_FETCHES;
   const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
 
@@ -514,7 +544,7 @@ async function enrich(
                 budget -= 1;
                 return fetchAndExtract(raw.url, {
                   policy: options.domainPolicy,
-                  timeoutMs: Math.min(1800, remaining),
+                  timeoutMs: Math.min(PAGE_TIMEOUT_MS, remaining),
                 });
               })();
         if (!page) return snippetOnly(raw);
@@ -647,7 +677,7 @@ export async function searchWeb(
         key,
         fetchAndExtract(candidate.url, {
           policy: options.domainPolicy,
-          timeoutMs: Math.min(1800, remaining),
+          timeoutMs: Math.min(PAGE_TIMEOUT_MS, remaining),
         }).catch(() => null)
       );
     }

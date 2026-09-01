@@ -164,7 +164,16 @@ dönüşleri tabandır. Bunun yerine iş azaltıldı:
 - Adaylar indirilmeden önce ucuz sinyallerle sıralanıp yalnızca kazananlar
   getiriliyor; bir arama en fazla 5 sayfa indirir.
 - `news.google.com` bağlantıları hiç indirilmez — onlar sayfa değil base64
-  yönlendirme sarmalayıcısı, hiçbir zaman içerik çıkmıyor.
+  yönlendirme sarmalayıcısı, hiçbir zaman içerik çıkmıyor. Stack Exchange
+  ailesi de indirilmiyor: ölçüldü, stackoverflow.com ve serverfault.com bu
+  deploy'dan **160 ms'de sıfır karakter** döndürüyor — zaman aşımı olamayacak
+  kadar hızlı, yani ret. API'lerinden gelen snippet zaten soru ve cevap
+  metnini taşıyor.
+- İçerik çıkarımının gerçek süresi ölçüldü: çıkarılabilen sayfa 358-891 ms
+  arasında çıkıyor, ortancası 588 ms. Bütçe buna göre ayarlandı (aşama için
+  1,4 sn, tek sayfa için 1 sn). Önceki 1,2 sn keşiften sonra ~600 ms
+  bırakıyordu: her indirmeyi başlatmaya yetiyor, hiçbirini bitirmeye
+  yetmiyordu — yani bütçe harcanıyor, sonuçlar yine snippet'e düşüyordu.
 - Her kaynağın kendi süresi var (web indeksi 700 ms, dikey 600 ms) ve süreyi
   kaçıran kaynak o sorgu için **son bilinen yanıtıyla** temsil ediliyor —
   yani süreyi kısmak kapsama kaybı anlamına gelmiyor.
