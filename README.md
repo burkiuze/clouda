@@ -67,10 +67,23 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
    yüzden listede yoklar — hiç cevap vermeyen bir sağlayıcı her sorguya sadece
    zaman aşımı ekler.
 
-   Açık web'i **Marginalia** karşılıyor; geri kalanı dikey kaynaklar
-   (Wikipedia, Stack Exchange, GitHub, Hacker News, Google News, akademik
-   sorularda OpenAlex, paket sorularında npm). Hepsi aynı anda sorgulanır ve
-   sıralamaları RRF ile birleştirilir.
+   Açık web'i **Marginalia** ve **mwmbl** karşılıyor. İkisi birden var çünkü
+   ikisi de tek başına güvenilir değil: Marginalia dakikalar arayla bir
+   sorguyu 202 ms'de yanıtladı, sonra aynısını 12 saniyede yanıtlayamadı.
+   Geri kalanı dikey kaynaklar (Wikipedia, Stack Exchange, GitHub, Hacker
+   News, Google News, akademik sorularda OpenAlex, paket sorularında npm).
+   Hepsi aynı anda sorgulanır ve sıralamaları RRF ile birleştirilir.
+
+   Denenip **elenenler** (hepsi datacenter IP'sinden ölçüldü): SearXNG
+   örnekleri JSON vermiyor ya da 403, Yep ve Qwant bot doğrulaması istiyor,
+   Ecosia/Startpage/PyPI ayrıştırılabilir sonuç döndürmüyor, dev.to kendi
+   arama parametresini yok sayıyor, Reddit/Mojeek/Lobsters 403.
+
+   > **Dürüst sınır.** "Tüm internet" tek bir ücretsiz kaynaktan gelmiyor;
+   > böyle bir kaynak datacenter IP'lerine açık değil. Kapsama, iki açık web
+   > indeksi + dikey kaynakların birleşimi kadardır. Bunu aşmanın gerçek yolu
+   > ya ücretli bir arama API'si ya da kendi tarayıcımızı residential IP'lerde
+   > çalıştırmak.
 
    > **Lisans uyarısı.** Marginalia'nın herkese açık API'si **CC-BY-NC-SA 4.0**
    > ile yayımlanıyor — atıf zorunlu ve **ticari kullanıma kapalı**. Clouda
@@ -107,6 +120,23 @@ sağlayıcısı bunu gerektirir), kullanıcı kayıtları yine Prisma'da tutulur
 
 Tek uç nokta: `POST /api/v1/search` — `Authorization: Bearer cld_live_...`
 başlığıyla, istek başına 10 kredi düşer. Detaylar `/docs` sayfasında.
+
+## Gecikme
+
+Ölçülen (Frankfurt bölgesi, production):
+
+| Durum | Süre |
+| --- | --- |
+| Önbellekten | ~40 ms |
+| Taze arama (içerik çıkarımıyla) | ~1,7 sn |
+
+Önbelleksiz bir aramanın 300 ms'ye inmesi mümkün değil: sekiz dış kaynağa
+sorup sayfaları indirmek tek başına bundan uzun sürer. Bunun yerine iş
+azaltıldı — adaylar indirilmeden önce ucuz sinyallerle sıralanıp yalnızca
+kazananlar getiriliyor, her kaynağın kendi zaman aşımı var ve içerik çıkarımı
+mutlak bir süre bütçesine karşı çalışıp yetişmeyenleri snippet'e düşürüyor.
+`include_content: false` gönderirsen sayfa indirilmez; hem daha hızlıdır hem
+de daha az kredi düşer.
 
 ## Notlar / sonraki adımlar
 

@@ -37,7 +37,14 @@ export const CAPABILITY_LABELS: Record<Capability, { title: string; description:
  * plus many page fetches, a browser step is one fetch).
  */
 export const CREDITS = {
+  /** Full search: discovery across every source plus page extraction. */
   search: 10,
+  /**
+   * Discovery only, when the caller asked for no page content. It is most of
+   * the value and a fraction of the work — no page is fetched — so charging
+   * the full rate for it would be charging for work not done.
+   */
+  searchNoContent: 4,
   /** Charged once per research run, plus perStep for each search round. */
   researchBase: 40,
   researchPerSearch: 10,

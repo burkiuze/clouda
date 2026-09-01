@@ -50,8 +50,11 @@ export const POST = withApi(
       domainPolicy: ctx.policy,
     });
 
-    const creditsUsed =
-      CREDITS.search * (result.cacheHit ? 0 : 1) + (mode === "claims" ? CREDITS.citations : 0);
+    // A cached answer costs nothing, and a request that declined page content
+    // is charged the discovery rate: the price follows the work.
+    const extracted = mode !== "sources" && body.include_content !== false;
+    const base = result.cacheHit ? 0 : extracted ? CREDITS.search : CREDITS.searchNoContent;
+    const creditsUsed = base + (mode === "claims" ? CREDITS.citations : 0);
 
     const payload: Record<string, unknown> = {
       query: result.query,
