@@ -6,7 +6,7 @@ export const API_KEY_PREFIX = "cld_live_";
  * Capabilities are opt-in per API key. Web search is deliberately absent: it
  * is always available on every key, because it is the base of the product.
  */
-export const CAPABILITIES = ["research", "browse", "monitor", "citations"] as const;
+export const CAPABILITIES = ["research", "browse", "monitor", "citations", "social"] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
 export const CAPABILITY_LABELS: Record<Capability, { title: string; description: string }> = {
@@ -23,6 +23,11 @@ export const CAPABILITY_LABELS: Record<Capability, { title: string; description:
   monitor: {
     title: "Web Monitoring",
     description: "URL ya da arama sorgusunu izler, değişiklikte webhook ile bildirir.",
+  },
+  social: {
+    title: "Social & Video",
+    description:
+      "Açık sosyal platformlarda (Mastodon, Lemmy) arar ve YouTube video sonuçlarını getirir; elindeki video adresleri için başlık/kanal bilgisi döner.",
   },
   citations: {
     title: "Citations & Doğrulama",
@@ -56,6 +61,8 @@ export const CREDITS = {
   browsePerStep: 1,
   monitorCheck: 1,
   citations: 2,
+  /** Social and video discovery: several APIs, no page extraction. */
+  social: 2,
   /** Extraction is one fetch per URL and no discovery, so it is cheaper than search. */
   extractBase: 1,
   extractPerUrl: 1,

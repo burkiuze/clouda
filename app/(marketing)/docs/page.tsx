@@ -44,6 +44,13 @@ const endpoints = [
   },
   {
     method: "POST",
+    path: "/api/v1/social",
+    capability: "social",
+    cost: `${CREDITS.social} kredi`,
+    summary: "Açık sosyal platformlarda ve YouTube'da arar; video adreslerini çözer.",
+  },
+  {
+    method: "POST",
     path: "/api/v1/monitors",
     capability: "monitor",
     cost: `kontrol başına ${CREDITS.monitorCheck}`,
@@ -402,6 +409,41 @@ Content-Type: application/json`}</Code>
           <p className="mt-4 text-sm text-clouda-muted">
             Okunamayan sayfa <code className="font-mono">ok: false</code> ile döner ve
             ücretlendirilmez; yalnızca gerçekten çıkarılan sayfalar için kredi düşer.
+          </p>
+        </Section>
+
+        <Section id="social">
+          <h2 className="display text-3xl">Social &amp; Video</h2>
+          <p className="mt-4 text-clouda-muted">
+            İki mod var. <code className="font-mono">query</code> ile açık sosyal
+            platformlarda arar; <code className="font-mono">video_urls</code> ile elindeki
+            video adreslerinin başlık, kanal ve küçük resim bilgisini döner.
+          </p>
+          <Code>{`POST /api/v1/social
+
+{
+  "query": "kubernetes",
+  "platforms": ["mastodon", "lemmy", "youtube"],   // varsayılan: hepsi
+  "limit": 10
+}`}</Code>
+          <Code>{`// video modu
+{
+  "video_urls": ["https://www.youtube.com/watch?v=..."]
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Neyin olmadığı da sözleşmenin
+            parçası.</strong> X, Instagram, Facebook ve Reddit burada yok — hesap ya da
+            ücretli anahtar olmadan erişilemiyorlar. Ölçüm sonuçları: Reddit RSS görünümü
+            dahil anonim datacenter trafiğine 403, Bluesky&apos;ın herkese açık AppView&apos;u
+            403, YouTube kanal beslemeleri 404, Nitter ise kapanmış. Hiç cevap vermeyen bir
+            kaynağı listelemek her isteğe sadece zaman aşımı ekler.
+          </p>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">Transkript yok.</strong> Video
+            sonuçları başlık, kanal ve küçük resim taşır ama altyazı taşımaz: YouTube
+            caption track&apos;lerini artık anonim datacenter isteklerine sunmuyor. Yanıtta{" "}
+            <code className="font-mono">transcript_available: false</code> olarak açıkça
+            belirtilir — tahmin etmen gerekmez.
           </p>
         </Section>
 

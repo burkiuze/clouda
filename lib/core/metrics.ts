@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
  * codes are all queryable from it without a second system.
  */
 
-export type Operation = "search" | "research" | "browse" | "monitor" | "extract" | "answer";
+export type Operation = "search" | "research" | "browse" | "monitor" | "extract" | "answer" | "social";
 
 export interface UsageRecord {
   userId: string;
