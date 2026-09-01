@@ -40,10 +40,23 @@ export function tokenize(text: string): string[] {
 const INTENT_PATTERNS: { intent: QueryIntent; patterns: RegExp[] }[] = [
   {
     intent: "news",
+    /**
+     * Deliberately narrow. The looser version classified "envoy proxy circuit
+     * breaking" as news because "breaking" appeared in it, which sent the
+     * query to a news set with no Stack Exchange or GitHub in it and returned
+     * two results instead of six. Words that are ordinary technical vocabulary
+     * on their own — breaking, latest, update, release — only count as news
+     * signals in a phrase that can mean nothing else.
+     */
     patterns: [
-      /\b(haber|haberler|son dakika|gelisme|gelişme|duyuru|aciklama|açıklama)\b/i,
-      /\b(news|breaking|announced|announcement|latest|update[sd]?)\b/i,
-      /\b(bugun|bugün|dun|dün|this week|today|yesterday)\b/i,
+      // Turkish agglutinates, so the suffix has to be allowed for: haber,
+      // haberler, haberleri, gündemdeki. A fixed word boundary matched none
+      // of the inflected forms people actually type.
+      /\b(haber\w*|manşet\w*|gündem\w*)/i,
+      /\bson dakika\b/i,
+      /\b(breaking news|latest news|news about|in the news)\b/i,
+      /\b(announced|announcement|press release)\b/i,
+      /\b(bugün|bugun|dün|dun|this week|today|yesterday)\b/i,
     ],
   },
   {
@@ -84,7 +97,9 @@ export function detectIntent(query: string): QueryIntent {
 }
 
 const FRESHNESS_HINTS = [
-  { pattern: /\b(son dakika|su an|şu an|right now|breaking)\b/i, hours: 1 },
+  // "breaking" alone is not a recency signal — "circuit breaking" would have
+  // pinned the results to the last hour and thrown away every canonical page.
+  { pattern: /\b(son dakika|su an|şu an|right now|breaking news)\b/i, hours: 1 },
   { pattern: /\b(bugun|bugün|today|son 24 saat)\b/i, hours: 24 },
   { pattern: /\b(bu hafta|this week|son 7 gun|son 7 gün)\b/i, hours: 24 * 7 },
   { pattern: /\b(bu ay|this month|son 30 gun|son 30 gün)\b/i, hours: 24 * 30 },
