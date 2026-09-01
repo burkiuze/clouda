@@ -102,13 +102,34 @@ function detectFreshness(query: string, intent: QueryIntent): number | null {
 }
 
 /** Strips conversational padding that hurts keyword retrieval. */
+/**
+ * Turns a spoken question into something an index can match.
+ *
+ * Stripping question words matters more than it looks. Sources are keyword
+ * indexes, not question answerers: "postgres index bloat nedir" found nothing
+ * anywhere, because no page contains "nedir" next to those terms, while
+ * "postgres index bloat" is answered several times over. Stopwords were
+ * already defined but only ever used for scoring, so the query reaching the
+ * providers still carried them.
+ *
+ * Diacritics are deliberately preserved — the tokeniser folds them for
+ * comparison, but "vektör" is what the Turkish sources are indexed under.
+ * And the stripped form is only used when enough content words survive: for a
+ * query that is mostly function words, the original is the better query.
+ */
 function optimize(query: string): string {
-  return query
+  const cleaned = query
     .replace(/^(bana|lutfen|lütfen|please|can you|could you|acaba)\s+/i, "")
     .replace(/\b(soyler misin|söyler misin|anlat|acikla|açıkla|tell me|explain)\b/gi, "")
     .replace(/[?!]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  const kept = cleaned
+    .split(" ")
+    .filter((word) => word && !STOPWORDS.has(normalize(word)));
+
+  return kept.length >= 2 ? kept.join(" ") : cleaned;
 }
 
 function detectLanguage(query: string): string {
