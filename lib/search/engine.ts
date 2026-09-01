@@ -75,7 +75,7 @@ function isUnextractable(url: string): boolean {
  * request. Discovery has already spent part of the budget by the time this
  * stage runs, so it is an absolute deadline rather than a per-stage timeout.
  */
-const ENRICH_DEADLINE_MS = 1700;
+const ENRICH_DEADLINE_MS = 1200;
 
 /**
  * Providers are asked for more than the caller wants. Deduplication, the
@@ -196,7 +196,7 @@ function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
  * answered by Wikipedia and Stack Overflow alone. Verticals are fast APIs, so
  * one that has not answered in 1.5s is in trouble rather than being thorough.
  */
-const DISCOVERY_DEADLINE_MS = { web: 1100, vertical: 800 } as const;
+const DISCOVERY_DEADLINE_MS = { web: 700, vertical: 600 } as const;
 
 /**
  * Resolves with the promise's value, or null once `ms` has passed. The loser
