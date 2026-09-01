@@ -169,6 +169,27 @@ interface DiscoveryOutcome {
   degraded: { provider: string; reason: string }[];
 }
 
+/**
+ * How long one source's raw answer stays reusable. Short, because this is not
+ * the answer cache — it exists so that a source having a bad minute does not
+ * remove its whole slice of the web from the results.
+ */
+const PROVIDER_CACHE_TTL_SECONDS = 900;
+
+function providerLookup(provider: Provider, query: string, locale: string) {
+  return { namespace: `provider:${provider.name}`, query, locale };
+}
+
+/**
+ * Runs one source, remembering what it last said.
+ *
+ * Marginalia measurably answered a query in 202ms and then failed to answer
+ * the same one at all minutes later. Without this, every such minute silently
+ * removed the open web from the results and the user saw only verticals. A
+ * recent answer from a source that is currently unreachable is far better than
+ * no answer from it, so its last reply stands in — and is reported as stale
+ * rather than passed off as fresh.
+ */
 async function runProvider(
   provider: Provider,
   query: string,
@@ -177,18 +198,29 @@ async function runProvider(
   freshnessHours: number | null | undefined,
   degraded: { provider: string; reason: string }[]
 ): Promise<RawResult[]> {
+  const lookup = providerLookup(provider, query, locale);
+
+  const fallback = async (reason: string): Promise<RawResult[]> => {
+    const cached = await cacheGet<RawResult[]>(lookup);
+    if (cached && cached.payload.length > 0) {
+      degraded.push({ provider: provider.name, reason: `${reason} (son yanıtı kullanıldı)` });
+      return cached.payload.slice(0, limit);
+    }
+    degraded.push({ provider: provider.name, reason });
+    return [];
+  };
+
   try {
     const results = await provider.search(query, limit, locale, freshnessHours);
-    if (results.length === 0) {
-      degraded.push({ provider: provider.name, reason: "no_results" });
-    }
+    if (results.length === 0) return fallback("no_results");
+
+    // Deliberately not awaited: this write only matters to a later request,
+    // and the extraction stage that follows gives it ample time to land.
+    // Awaiting it would add a database round trip per source to every search.
+    void cacheSet(lookup, results, PROVIDER_CACHE_TTL_SECONDS);
     return results;
   } catch (err) {
-    degraded.push({
-      provider: provider.name,
-      reason: err instanceof Error ? err.message.slice(0, 120) : "failed",
-    });
-    return [];
+    return fallback(err instanceof Error ? err.message.slice(0, 100) : "failed");
   }
 }
 
