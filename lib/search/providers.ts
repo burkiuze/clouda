@@ -113,7 +113,12 @@ const mwmbl: Provider = {
       .slice(0, limit)
       .map((r) => ({
         title: join(r.title),
-        url: r.url as string,
+        // This index stores the http form of URLs it crawled long ago, which
+        // both cost the result an insecure-link penalty it did not deserve and
+        // had us fetch pages in the clear. Sites that only speak http will
+        // fail the fetch and fall back to the snippet, which is the better
+        // trade in 2026.
+        url: (r.url as string).replace(/^http:\/\//i, "https://"),
         snippet: join(r.extract),
         publishedAt: null,
       }));
