@@ -128,7 +128,12 @@ function decodeEntities(text: string): string {
 function tag(block: string, name: string): string {
   const match =
     block.match(new RegExp(`<${name}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${name}>`, "i")) ?? null;
-  return match ? decodeEntities(match[1].replace(/<[^>]+>/g, " ")) : "";
+  if (!match) return "";
+
+  // Comments first, then tags. Several feeds wrap their description in markup
+  // with comments in it, and stripping tags alone left the loose "-->" behind
+  // — which is what one live result carried as its entire snippet.
+  return decodeEntities(match[1].replace(/<!--[\s\S]*?-->/g, " ").replace(/<[^>]+>/g, " "));
 }
 
 /** Parses RSS and Atom alike: the feeds listed above are a mix of both. */

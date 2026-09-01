@@ -79,8 +79,13 @@ function jsonLdDates($: cheerio.CheerioAPI): { published: string | null; modifie
 function readableText($: cheerio.CheerioAPI): string {
   $("script, style, noscript, nav, header, footer, aside, svg, form, iframe, template").remove();
 
-  // Prefer an explicit article container when the page marks one.
-  const container = $("article").first().length ? $("article").first() : $("body");
+  // Prefer whatever the page marks as its article, in descending order of how
+  // explicit the marking is, and fall back to the body. Without the later
+  // candidates a news site that lays its article out in plain divs — TRT does
+  // — returned its own navigation menu as the extracted "content".
+  const containers = ["article", "[itemprop='articleBody']", "main", "[role='main']"];
+  const found = containers.map((selector) => $(selector).first()).find((el) => el.length > 0);
+  const container = found ?? $("body");
 
   const blocks: string[] = [];
   container.find("p, li, h1, h2, h3, h4, blockquote, td").each((_, el) => {
