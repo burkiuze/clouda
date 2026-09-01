@@ -199,8 +199,13 @@ export async function newsCorpus(): Promise<NewsItem[]> {
     return cached.payload;
   }
 
+  // Awaited, unlike the warm refresh above. The cold path usually runs inside a
+  // request that has already given up waiting for it, and work handed to
+  // `after()` from an abandoned promise may never be scheduled — so the corpus
+  // that just cost twenty-two fetches would be thrown away and re-fetched by
+  // the next request. Awaiting it here keeps that from happening.
   const corpus = await pullAll(COLD_FETCH_TIMEOUT_MS);
-  if (corpus.length > 0) offload(() => cacheSet(CORPUS_LOOKUP, corpus, CORPUS_TTL_SECONDS));
+  if (corpus.length > 0) await cacheSet(CORPUS_LOOKUP, corpus, CORPUS_TTL_SECONDS);
   return corpus;
 }
 
@@ -265,8 +270,11 @@ export function matchNews(
     }
 
     // A headline sharing one word out of five with the question is not about
-    // the question. Half the terms have to land before a story is offered.
-    if (wanted.length > 0 && hits < Math.ceil(wanted.length / 2)) continue;
+    // the question. Measured: "artificial intelligence" matched a piece on
+    // military intelligence on the strength of the second word alone, so a
+    // short query has to match in full and a long one in most of its terms.
+    const required = Math.min(wanted.length, Math.max(2, Math.ceil(wanted.length * 0.6)));
+    if (wanted.length > 0 && hits < required) continue;
 
     // Recency as a tie-breaker within the last week, not as a veto.
     const age = item.publishedAt ? (Date.now() - Date.parse(item.publishedAt)) / 3_600_000 : 72;

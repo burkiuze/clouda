@@ -16,6 +16,20 @@ const endpoints = [
   },
   {
     method: "POST",
+    path: "/api/v1/search/batch",
+    capability: "her zaman açık",
+    cost: `sorgu başına ${CREDITS.search}`,
+    summary: "Tek istekte 10 sorguya kadar paralel arama.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/news",
+    capability: "her zaman açık",
+    cost: `${CREDITS.searchNoContent} kredi (metinle ${CREDITS.search})`,
+    summary: "22 yayıncı beslemesinden canlı haber; sorgu opsiyonel.",
+  },
+  {
+    method: "POST",
     path: "/api/v1/research",
     capability: "research",
     cost: `${CREDITS.researchBase} + arama başına ${CREDITS.researchPerSearch}`,
@@ -199,6 +213,94 @@ Content-Type: application/json`}</Code>
             indirilmez, daha hızlıdır). <code className="font-mono">claims</code> sonuçlardan iddia
             çıkarır ve kaynaklarla eşler — <code className="font-mono">citations</code> özelliği
             gerektirir.
+          </p>
+        </Section>
+
+        <Section id="batch">
+          <h2 className="display text-3xl">Batch Search</h2>
+          <p className="mt-4 text-clouda-muted">
+            Bir ajan görevi alt sorulara böldüğünde beş altı arama birden yapar. Bunları tek
+            istekte gönderdiğinde hepsi aynı anda çalışır: toplam süre en yavaş sorgunun süresi
+            kadardır, tek tek göndermenin toplamı kadar değil. Ücretlendirme değişmez — her sorgu
+            tek başına ne ödüyorsa onu öder, önbellekten gelen ücretsizdir.
+          </p>
+          <Code>{`POST /api/v1/search/batch
+
+{
+  "queries": [                 // en fazla 10, tekrar eden sorgu kabul edilmez
+    "pgvector HNSW parametreleri",
+    "qdrant bellek kullanımı",
+    "weaviate hibrit arama"
+  ],
+  "max_results": 5,
+  "include_content": true
+}`}</Code>
+          <Code>{`{
+  "count": 3,
+  "succeeded": 3,
+  "searches": [
+    {
+      "query": "pgvector HNSW parametreleri",
+      "intent": "technical",
+      "cached": false,
+      "results": [ /* /api/v1/search ile aynı biçim */ ],
+      "provider": "marginalia+stackexchange"
+    }
+  ],
+  "credits_used": 6,
+  "took_ms": 1180
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Bir sorgunun başarısız olması diğerlerini düşürmez: o sorgu kendi{" "}
+            <code className="font-mono">error</code> nesnesiyle döner ve ücretlendirilmez.
+          </p>
+        </Section>
+
+        <Section id="news">
+          <h2 className="display text-3xl">News</h2>
+          <p className="mt-4 text-clouda-muted">
+            Arama bir soruyu yanıtlar; bu uç nokta &ldquo;ne oluyor&rdquo; sorusunu yanıtlar. 22
+            yayıncı beslemesi (Türkçe ve İngilizce) arka planda çekilip bellekte tutulur, istek
+            geldiğinde eşleştirme bu derlem üzerinde yapılır — yani dışarıya çıkılmaz.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            <code className="font-mono">query</code> zorunlu değildir. En sık gelen haber isteğinin
+            sorgusu yoktur: &ldquo;son bir saatte ne oldu&rdquo; diye soran bir ajanın arayacağı bir
+            şey yoktur. Sorgu verilmezse derlem tarihe göre sıralı döner.
+          </p>
+          <Code>{`POST /api/v1/news
+
+{
+  "query": "enflasyon",        // opsiyonel; boş bırakılırsa manşetler döner
+  "lang": "tr",                // tr | en, varsayılan ikisi birden
+  "topics": ["business"],      // general | business | tech | science | world
+  "sources": ["aa-ekonomi"],   // belirli yayıncılar
+  "freshness": "day",
+  "max_results": 10,           // 1-50
+  "include_content": false     // true ise ilk 5 haberin tam metni çıkarılır
+}`}</Code>
+          <Code>{`{
+  "query": "enflasyon",
+  "filters": { "lang": "tr", "topics": ["business"], "sources": "all", "freshness_hours": 24 },
+  "corpus_size": 604,
+  "articles": [
+    {
+      "title": "…",
+      "url": "https://www.aa.com.tr/tr/ekonomi/…",
+      "snippet": "…",
+      "published_at": "2026-09-01T08:40:00.000Z",
+      "publisher": "aa-ekonomi",
+      "lang": "tr"
+    }
+  ],
+  "credits_used": 1,
+  "took_ms": 38
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Buradaki adresler gerçek makale adresleridir; Google News'in base64 yönlendirme
+            sarmalayıcıları değil. Yani <code className="font-mono">include_content</code> ile tam
+            metin çıkarılabilir ya da adresler <code className="font-mono">/api/v1/extract</code>
+            &apos;e verilebilir.
           </p>
         </Section>
 

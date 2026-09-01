@@ -67,6 +67,19 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
    yüzden listede yoklar — hiç cevap vermeyen bir sağlayıcı her sorguya sadece
    zaman aşımı ekler.
 
+   Haberi **kendi haber odamız** karşılıyor: 22 yayıncı beslemesi (AA, TRT,
+   BBC Türkçe/World/Business/Tech, NTV, Hürriyet, DW, Guardian, NYT, NPR, AP,
+   Al Jazeera, CNBC, Yahoo Finance, Ars Technica, The Verge, TechCrunch,
+   Science Daily) arka planda çekilip bellekte tutulur, eşleştirme derlem
+   üzerinde yapılır. Ölçüldü: 580 haber, hepsi tarihli, eşleştirme 2 ms.
+   Google News'ten farkı, adreslerin gerçek makale adresleri olması — o yüzden
+   içerikleri okunabiliyor.
+
+   Haberde denenip **elenenler**: GDELT (anahtarsız küresel haber indeksi
+   olduğu için en umut vereni; her denemede 10 saniyede yanıt vermedi),
+   Reuters beslemesi (adres çözülmüyor), Sözcü (besleme boş ayrışıyor),
+   Bing ve Yahoo haber RSS'leri (kanal başlığı dışında öğe döndürmüyor).
+
    Açık web'i **Marginalia** ve **mwmbl** karşılıyor. İkisi birden var çünkü
    ikisi de tek başına güvenilir değil: Marginalia dakikalar arayla bir
    sorguyu 202 ms'de yanıtladı, sonra aynısını 12 saniyede yanıtlayamadı.
@@ -118,8 +131,21 @@ sağlayıcısı bunu gerektirir), kullanıcı kayıtları yine Prisma'da tutulur
 
 ## API
 
-Tek uç nokta: `POST /api/v1/search` — `Authorization: Bearer cld_live_...`
-başlığıyla, istek başına 10 kredi düşer. Detaylar `/docs` sayfasında.
+`Authorization: Bearer cld_live_...` başlığıyla çağrılır. Arama 2 kredi,
+sayfa içeriği istenmediğinde 1. Detaylar `/docs` sayfasında.
+
+| Uç nokta | Ne yapar |
+| --- | --- |
+| `POST /api/v1/search` | Arama, içerik çıkarımı, kalite skorları |
+| `POST /api/v1/search/batch` | Tek istekte 10 sorguya kadar paralel arama |
+| `POST /api/v1/news` | 22 yayıncı beslemesinden canlı haber; sorgu opsiyonel |
+| `POST /api/v1/answer` | Kaynaklı, alıntıya dayalı cevap |
+| `POST /api/v1/extract` | Elindeki adresleri modele hazır metne çevirir |
+| `POST /api/v1/research` | Çok turlu araştırma, kaynaklı rapor |
+| `POST /api/v1/browse` | Sayfa açar, bağlantı takip eder |
+| `POST /api/v1/social` | Mastodon, Lemmy, YouTube |
+| `POST /api/v1/monitors` | Değişiklik izler, webhook gönderir |
+| `GET /api/v1/usage` | Kullanım ve performans metrikleri |
 
 ## Gecikme
 
@@ -144,6 +170,15 @@ dönüşleri tabandır. Bunun yerine iş azaltıldı:
   yani süreyi kısmak kapsama kaybı anlamına gelmiyor.
 - İçerik çıkarımı isteğin başından itibaren 1,2 sn'lik mutlak bir bütçeye
   karşı çalışıyor; yetişmeyen sayfa kendi snippet'ine düşüyor.
+- Keşif, dört kaynak yanıtladığı anda kesiliyor — süresini doldurmayı beklemek
+  yerine. Kesilen kaynak, süreyi kaçıran kaynakla aynı yolu izliyor (son bilinen
+  yanıtı kullanılıyor), yani tasarruf beklemekten geliyor, kapsamdan değil.
+- İlk yanıtlayan kaynağın en iyi adayları, fan-out sürerken indirilmeye
+  başlıyor: iki bekleme aşaması art arda değil, üst üste çalışıyor.
+- Yanıt önbelleğine yazma, kullanım kaydı ve önbellek sayacı yanıt yolundan
+  çıkarıldı (`after()`), yani çağıran bizim defter tutmamızı beklemiyor.
+- Haber derlemi istek anında değil arka planda tazeleniyor; haber sorgusu
+  bellekten yanıtlanıyor.
 
 `include_content: false` gönderirsen sayfa hiç indirilmez; hem yaklaşık iki
 kat hızlıdır hem de tam ücret yerine keşif ücreti düşer.
