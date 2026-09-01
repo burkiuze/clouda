@@ -75,7 +75,7 @@ function isUnextractable(url: string): boolean {
  * request. Discovery has already spent part of the budget by the time this
  * stage runs, so it is an absolute deadline rather than a per-stage timeout.
  */
-const ENRICH_DEADLINE_MS = 2200;
+const ENRICH_DEADLINE_MS = 1700;
 
 /**
  * Providers are asked for more than the caller wants. Deduplication, the
@@ -196,7 +196,7 @@ function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
  * answered by Wikipedia and Stack Overflow alone. Verticals are fast APIs, so
  * one that has not answered in 1.5s is in trouble rather than being thorough.
  */
-const DISCOVERY_DEADLINE_MS = { web: 1800, vertical: 1200 } as const;
+const DISCOVERY_DEADLINE_MS = { web: 1100, vertical: 800 } as const;
 
 /**
  * Resolves with the promise's value, or null once `ms` has passed. The loser
@@ -297,19 +297,29 @@ async function discover(
   const inFlight = open.map((provider) => ({
     name: provider.name,
     deadline: startedAt + DISCOVERY_DEADLINE_MS[provider.tier],
+    lookup: providerLookup(provider, plan.optimized, locale),
     answer: runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded).then(
       (results) => filterUnsafe(results)
     ),
   }));
 
   let settled = await Promise.all(
-    inFlight.map(async ({ name, answer, deadline }) => {
+    inFlight.map(async ({ name, answer, deadline, lookup }) => {
       const inTime = await raceDeadline(answer, deadline - Date.now());
-      if (inTime === null) {
-        degraded.push({ provider: name, reason: "deadline" });
-        return { name, results: [] as RawResult[] };
+      if (inTime !== null) return { name, results: inTime };
+
+      // A source that ran out of time still has a recent answer on file, and
+      // that beats dropping its whole slice of the web. Without this the
+      // deadline could only be bought by losing coverage, which is why it had
+      // to be generous; with it the wait can be short.
+      const cached = await cacheGet<RawResult[]>(lookup);
+      if (cached && cached.payload.length > 0) {
+        degraded.push({ provider: name, reason: "deadline (son yanıtı kullanıldı)" });
+        return { name, results: cached.payload.slice(0, limit) };
       }
-      return { name, results: inTime };
+
+      degraded.push({ provider: name, reason: "deadline" });
+      return { name, results: [] as RawResult[] };
     })
   );
 
