@@ -51,7 +51,7 @@ const ENRICH_HEADROOM = 3;
  * request. Discovery has already spent part of the budget by the time this
  * stage runs, so it is an absolute deadline rather than a per-stage timeout.
  */
-const ENRICH_DEADLINE_MS = 3200;
+const ENRICH_DEADLINE_MS = 3000;
 
 /**
  * Providers are asked for more than the caller wants. Deduplication, the
@@ -163,6 +163,29 @@ function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
   });
 }
 
+/**
+ * How long the fan-out is given before the results in hand are used. Sources
+ * still have their own, longer timeouts; this is the point past which waiting
+ * costs the caller more than the missing source is worth.
+ */
+const DISCOVERY_DEADLINE_MS = 1500;
+
+/**
+ * Resolves with the promise's value, or null once `ms` has passed. The loser
+ * is left running rather than cancelled — it is still doing useful work for
+ * the provider cache — but its timer is cleared so it cannot hold the process.
+ */
+function raceDeadline<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  if (ms <= 0) return Promise.resolve(null);
+
+  let timer: ReturnType<typeof setTimeout>;
+  const expiry = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+
+  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer));
+}
+
 interface DiscoveryOutcome {
   results: RawResult[];
   provider: string;
@@ -234,15 +257,41 @@ async function discover(
 
   // Every source is asked at once and the answers are fused; there is no
   // single "best" index to try first.
+  //
+  // The fan-out is not waited out in full. One slow source otherwise decides
+  // the response time for all of them, and the marginal value of its results
+  // is small once five others have answered. A source that misses the deadline
+  // is not cancelled: it finishes in the background and writes to the provider
+  // cache, so the next request for this query gets it for free.
   const open = openProvidersForIntent(plan.intent);
-  const settled = await Promise.all(
-    open.map(async (provider) => ({
-      name: provider.name,
-      results: filterUnsafe(
-        await runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded)
-      ),
-    }))
+  const deadline = Date.now() + DISCOVERY_DEADLINE_MS;
+
+  const inFlight = open.map((provider) => ({
+    name: provider.name,
+    answer: runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded).then(
+      (results) => filterUnsafe(results)
+    ),
+  }));
+
+  let settled = await Promise.all(
+    inFlight.map(async ({ name, answer }) => {
+      const inTime = await raceDeadline(answer, deadline - Date.now());
+      if (inTime === null) {
+        degraded.push({ provider: name, reason: "deadline" });
+        return { name, results: [] as RawResult[] };
+      }
+      return { name, results: inTime };
+    })
   );
+
+  // Cutting the fan-out short is only an optimisation while something did
+  // arrive. If every source was slow, an empty answer is not a faster answer —
+  // it is a wrong one — so wait for them properly.
+  if (settled.every((s) => s.results.length === 0)) {
+    settled = await Promise.all(
+      inFlight.map(async ({ name, answer }) => ({ name, results: await answer }))
+    );
+  }
 
   const answered = settled.filter((s) => s.results.length > 0);
   if (answered.length === 0) return { results: [], provider: "none", degraded };
