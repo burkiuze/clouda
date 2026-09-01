@@ -31,6 +31,22 @@ const STOPWORDS = new Set([
   "on", "at", "by", "with", "about", "from",
 ]);
 
+/**
+ * Words that say a query is about news rather than saying what about.
+ *
+ * They are stripped only once the intent has been decided from them, because
+ * they are the signal that decides it. Leaving them in the search terms was
+ * measured to cost real answers: "nepal sel felaketi son dakika" was matched
+ * against headlines term by term, and no headline about the floods contains
+ * the words "son dakika", so the story that answered the question failed the
+ * match while the marker words did nothing but dilute it.
+ */
+const NEWS_MARKERS = new Set([
+  "son", "dakika", "haber", "haberi", "haberler", "haberleri", "gundem",
+  "guncel", "manset", "breaking", "news", "latest", "headlines", "update",
+  "updates",
+]);
+
 export function tokenize(text: string): string[] {
   return normalize(text)
     .split(" ")
@@ -132,7 +148,7 @@ function detectFreshness(query: string, intent: QueryIntent): number | null {
  * And the stripped form is only used when enough content words survive: for a
  * query that is mostly function words, the original is the better query.
  */
-function optimize(query: string): string {
+function optimize(query: string, intent?: QueryIntent): string {
   const cleaned = query
     .replace(/^(bana|lutfen|lütfen|please|can you|could you|acaba)\s+/i, "")
     .replace(/\b(soyler misin|söyler misin|anlat|acikla|açıkla|tell me|explain)\b/gi, "")
@@ -140,10 +156,19 @@ function optimize(query: string): string {
     .replace(/\s+/g, " ")
     .trim();
 
+  const drop = intent === "news" || intent === "finance" ? NEWS_MARKERS : null;
+
   const kept = cleaned
     .split(" ")
-    .filter((word) => word && !STOPWORDS.has(normalize(word)));
+    .filter((word) => {
+      if (!word) return false;
+      const normalised = normalize(word);
+      return !STOPWORDS.has(normalised) && !drop?.has(normalised);
+    });
 
+  // Falling back to the whole query matters most here: "son dakika" on its own
+  // is a legitimate request for headlines, and stripping it would leave
+  // nothing to search for.
   return kept.length >= 2 ? kept.join(" ") : cleaned;
 }
 
@@ -192,7 +217,7 @@ export function planQuery(
   options: { subQuestions?: number; freshnessHours?: number | null } = {}
 ): QueryPlan {
   const intent = detectIntent(query);
-  const optimized = optimize(query) || query.trim();
+  const optimized = optimize(query, intent) || query.trim();
   const suggested = detectFreshness(query, intent);
   const freshness = options.freshnessHours ?? suggested;
 
