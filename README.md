@@ -153,8 +153,8 @@ sayfa içeriği istenmediğinde 1. Detaylar `/docs` sayfasında.
 
 | Durum | Süre |
 | --- | --- |
-| Önbellekten | ~40 ms |
-| Taze arama (içerik çıkarımıyla) | ~1,2 sn |
+| Önbellekten | ~23 ms |
+| Taze arama (içerik çıkarımıyla) | ~1,4 sn |
 | Taze arama (`include_content: false`) | ~0,7 sn |
 
 Önbelleksiz bir aramanın 300 ms'ye inmesi mümkün değil: yedi dış kaynağa

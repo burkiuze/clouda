@@ -470,8 +470,19 @@ async function discover(
   }
   clearTimeout(floorTimer);
 
+  // One line per source. The list is appended to from two places that cannot
+  // see each other — the source's own failure path and the deadline that gave
+  // up on it — and a source can reach both, once by missing the deadline and
+  // again when its late answer turns out to be empty.
+  const seenDegraded = new Set<string>();
+  const reasons = degraded.filter((d) => {
+    if (seenDegraded.has(d.provider)) return false;
+    seenDegraded.add(d.provider);
+    return true;
+  });
+
   const answered = settled.filter((s) => s.results.length > 0);
-  if (answered.length === 0) return { results: [], provider: "none", degraded };
+  if (answered.length === 0) return { results: [], provider: "none", degraded: reasons };
 
   // Open indexes match loosely, so gate on shared terms before merging.
   const gated = answered
@@ -483,7 +494,7 @@ async function discover(
   return {
     results: fuseByRank(chosen, limit),
     provider: chosen.map((s) => s.name).join("+"),
-    degraded,
+    degraded: reasons,
   };
 }
 
