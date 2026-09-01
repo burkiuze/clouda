@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { hashApiKey } from "@/lib/apiKey";
 import { CloudaError, toCloudaError } from "@/lib/core/errors";
 import { recordUsage, Operation } from "@/lib/core/metrics";
+import { offload } from "@/lib/core/offload";
 import { recordSecurityEvent } from "@/lib/core/audit";
 import { Capability } from "@/lib/constants";
 import type { DomainPolicy } from "@/lib/core/security";
@@ -209,19 +210,25 @@ export function withApi(
       reserved = 0;
       const latencyMs = Date.now() - started;
 
-      await recordUsage({
-        userId: ctx.userId,
-        apiKeyId: ctx.apiKeyId,
-        operation: options.operation,
-        query: result.label,
-        resultCount: result.resultCount ?? 0,
-        creditsUsed: result.creditsUsed,
-        provider: result.provider,
-        latencyMs,
-        cacheHit: result.cacheHit,
-        steps: result.steps,
-        success: true,
-      });
+      // Metrics are written after the response goes out. Nobody waits on a
+      // usage row, yet awaiting it charged every request a database round trip
+      // it got nothing back from.
+      const actor = ctx;
+      offload(() =>
+        recordUsage({
+          userId: actor.userId,
+          apiKeyId: actor.apiKeyId,
+          operation: options.operation,
+          query: result.label,
+          resultCount: result.resultCount ?? 0,
+          creditsUsed: result.creditsUsed,
+          provider: result.provider,
+          latencyMs,
+          cacheHit: result.cacheHit,
+          steps: result.steps,
+          success: true,
+        })
+      );
 
       return NextResponse.json(
         {

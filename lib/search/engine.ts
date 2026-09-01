@@ -1,4 +1,5 @@
 import { cacheGet, cacheSet, ttlForIntent } from "@/lib/core/cache";
+import { offload } from "@/lib/core/offload";
 import { CloudaError } from "@/lib/core/errors";
 import { filterUnsafe } from "@/lib/search/safety";
 import { fetchAndExtract } from "@/lib/search/extract";
@@ -84,6 +85,33 @@ const ENRICH_DEADLINE_MS = 1200;
  */
 const CANDIDATE_MULTIPLIER = 2;
 const MIN_CANDIDATES = 10;
+
+/**
+ * Discovery stops early once this many sources have answered with something.
+ *
+ * The fan-out used to be paid for at the price of its slowest member every
+ * time: with six sources answering in 150ms, the request still sat until the
+ * deadline for the seventh. A source cut short here is not dropped — it takes
+ * the same stale-cache path as a source that missed the deadline, so the
+ * saving is in waiting, not in coverage.
+ *
+ * The floor exists because Marginalia has been measured answering in 202ms;
+ * exiting before that would cut the open web off on every fast query.
+ */
+const EARLY_EXIT_PROVIDERS = 4;
+const EARLY_EXIT_FLOOR_MS = 220;
+
+/**
+ * Pages fetched speculatively while the remaining sources are still answering.
+ *
+ * Discovery and extraction are both pure waiting, and they were serialised:
+ * nothing was downloaded until the last source had spoken. The first source to
+ * answer already names pages the final ranking will almost certainly keep, so
+ * their download starts immediately and overlaps the rest of the fan-out. The
+ * cap is low because a speculative fetch that misses the final cut is wasted
+ * bandwidth — it is never wasted time.
+ */
+const PREFETCH_MAX = 3;
 
 /**
  * Cheap pre-ranking over what a provider already told us. Deliberately crude:
@@ -279,7 +307,8 @@ async function discover(
   plan: QueryPlan,
   limit: number,
   locale: string,
-  freshnessHours: number | null | undefined
+  freshnessHours: number | null | undefined,
+  onFirstResults?: (results: RawResult[]) => void
 ): Promise<DiscoveryOutcome> {
   const degraded: { provider: string; reason: string }[] = [];
 
@@ -303,10 +332,56 @@ async function discover(
     ),
   }));
 
+  // Watch the answers as they land rather than only at the end, for two
+  // reasons: the first ones name pages worth downloading immediately, and once
+  // enough sources have spoken there is nothing left to wait for.
+  const captured = new Map<string, RawResult[]>();
+  let answeredWithResults = 0;
+  let announced = false;
+  let releaseEarly: () => void = () => {};
+  const earlyExit = new Promise<void>((resolve) => {
+    releaseEarly = resolve;
+  });
+
+  for (const { name, answer } of inFlight) {
+    void answer.then((results) => {
+      captured.set(name, results);
+      if (results.length === 0) return;
+      answeredWithResults += 1;
+
+      if (!announced && onFirstResults) {
+        announced = true;
+        onFirstResults(results);
+      }
+
+      if (
+        answeredWithResults >= Math.min(EARLY_EXIT_PROVIDERS, open.length) &&
+        Date.now() - startedAt >= EARLY_EXIT_FLOOR_MS
+      ) {
+        releaseEarly();
+      }
+    });
+  }
+
+  // The floor is a wall clock, not a count: without this timer a query where
+  // every source answers in 80ms would never reach the check above again.
+  const floorTimer = setTimeout(() => {
+    if (answeredWithResults >= Math.min(EARLY_EXIT_PROVIDERS, open.length)) releaseEarly();
+  }, EARLY_EXIT_FLOOR_MS);
+
   let settled = await Promise.all(
     inFlight.map(async ({ name, answer, deadline, lookup }) => {
-      const inTime = await raceDeadline(answer, deadline - Date.now());
+      const inTime = await Promise.race([
+        raceDeadline(answer, deadline - Date.now()),
+        earlyExit.then(() => null),
+      ]);
       if (inTime !== null) return { name, results: inTime };
+
+      // Cut short rather than timed out: the answer may have landed in the
+      // same instant the race was decided, and throwing it away would make the
+      // early exit cost coverage it does not need to cost.
+      const late = captured.get(name);
+      if (late && late.length > 0) return { name, results: late };
 
       // A source that ran out of time still has a recent answer on file, and
       // that beats dropping its whole slice of the web. Without this the
@@ -331,6 +406,7 @@ async function discover(
       inFlight.map(async ({ name, answer }) => ({ name, results: await answer }))
     );
   }
+  clearTimeout(floorTimer);
 
   const answered = settled.filter((s) => s.results.length > 0);
   if (answered.length === 0) return { results: [], provider: "none", degraded };
@@ -357,10 +433,13 @@ async function discover(
  * less than a prompt answer, and without this the response time is decided by
  * the slowest server in the result set.
  */
+type ExtractedPage = Awaited<ReturnType<typeof fetchAndExtract>>;
+
 async function enrich(
   results: RawResult[],
   options: SearchOptions,
-  deadline: number
+  deadline: number,
+  inFlightPages: Map<string, Promise<ExtractedPage>>
 ): Promise<{ raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[]> {
   const snippetOnly = (raw: RawResult) => ({
     raw,
@@ -375,7 +454,8 @@ async function enrich(
 
   // Results are already ordered by the cheap pre-score, so the budget goes to
   // the ones most likely to be published.
-  let budget = MAX_FETCHES;
+  // Speculative fetches have already spent their share of the budget.
+  let budget = Math.max(0, MAX_FETCHES - inFlightPages.size);
   const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
 
   for (let i = 0; i < results.length; i += MAX_ENRICH_CONCURRENCY) {
@@ -384,15 +464,20 @@ async function enrich(
 
     const pages = await Promise.all(
       batch.map(async (raw) => {
-        if (remaining <= 0 || budget <= 0 || isUnextractable(raw.url)) {
-          return snippetOnly(raw);
-        }
-        budget -= 1;
-
-        const page = await fetchAndExtract(raw.url, {
-          policy: options.domainPolicy,
-          timeoutMs: Math.min(1800, remaining),
-        });
+        // A page already being downloaded is free to use and does not touch
+        // the budget: it was started during discovery and is likely done.
+        const started = inFlightPages.get(raw.url);
+        const page = started
+          ? await started
+          : remaining <= 0 || budget <= 0 || isUnextractable(raw.url)
+            ? null
+            : await (() => {
+                budget -= 1;
+                return fetchAndExtract(raw.url, {
+                  policy: options.domainPolicy,
+                  timeoutMs: Math.min(1800, remaining),
+                });
+              })();
         if (!page) return snippetOnly(raw);
 
         return {
@@ -488,11 +573,42 @@ export async function searchWeb(
   }
 
   const candidateCount = Math.max(MIN_CANDIDATES, maxResults * CANDIDATE_MULTIPLIER);
+
+  // Downloading pages used to begin only after the last source had answered,
+  // so two stages that are both pure waiting were run one after the other. The
+  // first source's best-looking results are downloaded while the rest of the
+  // fan-out is still in flight, which takes that wait off the total instead of
+  // adding to it.
+  const inFlightPages = new Map<string, Promise<ExtractedPage>>();
+  const wantsContent = options.includeContent !== false;
+
+  const startPrefetch = (early: RawResult[]) => {
+    if (!wantsContent) return;
+    const remaining = started + ENRICH_DEADLINE_MS - Date.now();
+    if (remaining <= 200) return;
+
+    const head = [...early]
+      .sort((a, b) => preScore(b, plan) - preScore(a, plan))
+      .filter((r) => !isUnextractable(r.url))
+      .slice(0, PREFETCH_MAX);
+
+    for (const candidate of head) {
+      if (inFlightPages.has(candidate.url)) continue;
+      inFlightPages.set(
+        candidate.url,
+        fetchAndExtract(candidate.url, {
+          policy: options.domainPolicy,
+          timeoutMs: Math.min(1800, remaining),
+        }).catch(() => null)
+      );
+    }
+  };
+
   const {
     results: candidates,
     provider,
     degraded,
-  } = await discover(plan, candidateCount, locale, freshnessHours);
+  } = await discover(plan, candidateCount, locale, freshnessHours, startPrefetch);
 
   // Rank the whole candidate pool on the free signals, then fetch only the
   // head of it. Cutting the pool before ranking wasted the extra candidates;
@@ -515,7 +631,7 @@ export async function searchWeb(
   }
 
   // Whatever has not been fetched by this point is served from its snippet.
-  const enriched = await enrich(raw, options, started + ENRICH_DEADLINE_MS);
+  const enriched = await enrich(raw, options, started + ENRICH_DEADLINE_MS, inFlightPages);
   const hostCounts = corroborationByHost(raw);
 
   let results: SearchResult[] = enriched.map((item) => {
@@ -573,8 +689,10 @@ export async function searchWeb(
     degraded,
   };
 
+  // Written after the response is sent: the caller has their answer, and the
+  // cache write only matters to the next request.
   if (!options.noCache && results.length > 0) {
-    await cacheSet(lookup, response, ttlForIntent(plan.intent, freshnessHours));
+    offload(() => cacheSet(lookup, response, ttlForIntent(plan.intent, freshnessHours)));
   }
 
   return response;

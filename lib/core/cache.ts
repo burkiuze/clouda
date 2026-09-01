@@ -101,7 +101,9 @@ export async function cacheGet<T>(lookup: CacheLookup): Promise<CacheHit<T> | nu
       if (row.freshnessH != null && row.freshnessH > lookup.freshnessHours) return null;
     }
 
-    await prisma.searchCache
+    // Not awaited: the hit counter is a statistic, and awaiting it put a
+    // second database round trip on the fastest path the product has.
+    void prisma.searchCache
       .update({ where: { id: row.id }, data: { hits: { increment: 1 } } })
       .catch(() => {});
 

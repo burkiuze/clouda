@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 import { safeFetch } from "@/lib/core/http";
 import { CloudaError } from "@/lib/core/errors";
 import { RawResult } from "@/lib/search/types";
+import { asRawResults, matchNews, newsCorpus } from "@/lib/search/newsroom";
 
 /**
  * Discovery providers — all of them open, none of them keyed.
@@ -401,7 +402,29 @@ const googleNews: Provider = {
   },
 };
 
+/* -------------------------------------------------------------- newsroom */
+
+/**
+ * Publisher feeds, pulled in the background and matched locally.
+ *
+ * This is the only source here that does no network work at request time. The
+ * corpus is refreshed out of band, so a news query is answered from memory —
+ * and unlike Google News, every item carries a real article URL that the
+ * extraction stage can actually read.
+ */
+const newsroom: Provider = {
+  name: "newsroom",
+  tier: "vertical",
+  available: () => true,
+  async search(query, limit, _locale, freshnessHours) {
+    const corpus = await newsCorpus();
+    if (corpus.length === 0) return [];
+    return asRawResults(matchNews(corpus, query, limit, freshnessHours));
+  },
+};
+
 export const OPEN_PROVIDERS: Provider[] = [
+  newsroom,
   marginalia,
   mwmbl,
   wikipedia,
@@ -412,6 +435,8 @@ export const OPEN_PROVIDERS: Provider[] = [
 ];
 
 export const ALL_PROVIDERS = [...OPEN_PROVIDERS, openalex, npm];
+
+export { newsroom };
 
 /**
  * Which sources suit a question.
@@ -425,13 +450,13 @@ export function openProvidersForIntent(intent: string): Provider[] {
   switch (intent) {
     case "news":
     case "finance":
-      return [marginalia, mwmbl, googleNews, wikipedia];
+      return [newsroom, marginalia, mwmbl, googleNews, wikipedia];
     case "academic":
       return [marginalia, mwmbl, openalex, wikipedia];
     case "technical":
       return [marginalia, mwmbl, stackexchange, github, hackernews, npm];
     case "product":
-      return [marginalia, mwmbl, googleNews, hackernews, wikipedia];
+      return [newsroom, marginalia, mwmbl, googleNews, hackernews, wikipedia];
     default:
       return OPEN_PROVIDERS;
   }

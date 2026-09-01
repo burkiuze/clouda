@@ -76,7 +76,15 @@ export const CREDITS = {
  * pull the whole scraping stack into the build. Keep the two in step — the
  * site claimed eight while the array held seven.
  */
-export const SEARCH_SOURCE_COUNT = 7;
+export const SEARCH_SOURCE_COUNT = 8;
+
+/**
+ * Publisher feeds behind the "newsroom" source, mirrored from FEEDS in
+ * lib/search/newsroom.ts for the same reason. One of the eight sources above
+ * is itself an aggregate of these, so the two numbers are not comparable and
+ * are never added together.
+ */
+export const NEWS_FEED_COUNT = 22;
 
 /** Backwards-compatible alias used by the dashboard and marketing copy. */
 export const CREDITS_PER_SEARCH = CREDITS.search;
