@@ -150,7 +150,7 @@ Content-Type: application/json`}</Code>
 
 {
   "query": "vektör veritabanı karşılaştırması",
-  "max_results": 5,          // 1-20, varsayılan 5
+  "max_results": 5,          // 1-30, varsayılan 10
   "locale": "tr-TR",         // varsayılan tr-TR
   "freshness": "week",       // hour | day | week | month | year | saat sayısı
   "include_content": true,   // sayfa metni çıkarılsın mı
@@ -162,7 +162,7 @@ Content-Type: application/json`}</Code>
   "mode": "results",
   "intent": "product",
   "freshness_applied": true,
-  "provider": "tavily",
+  "provider": "marginalia+wikipedia+stackexchange",
   "cached": false,
   "results": [
     {
@@ -172,7 +172,7 @@ Content-Type: application/json`}</Code>
       "content": "Sayfadan çıkarılan okunabilir metin…",
       "published_at": "2026-08-21T09:14:00.000Z",
       "updated_at": null,
-      "source": "tavily",
+      "source": "marginalia+wikipedia+stackexchange",
       "scores": {
         "relevance": 0.82,
         "credibility": 0.78,
@@ -182,8 +182,8 @@ Content-Type: application/json`}</Code>
       }
     }
   ],
-  "credits_used": 10,
-  "credits_remaining": 1990,
+  "credits_used": 2,
+  "credits_remaining": 1998,
   "took_ms": 842
 }`}</Code>
           <p className="mt-4 text-sm text-clouda-muted">
@@ -473,11 +473,23 @@ const fresh = Math.abs(Date.now() / 1000 - Number(req.headers["x-clouda-timestam
         <Section id="reliability">
           <h2 className="display text-3xl">Güvenilirlik ve fallback</h2>
           <p className="mt-4 text-clouda-muted">
-            Arama sağlayıcıları sırayla denenir: anahtarlı sağlayıcı (Tavily / Brave / Serper)
-            önce, sonra açık kaynaklar. Bir sağlayıcı boş dönerse ya da hata verirse sıradakine
-            geçilir; denenip başarısız olanlar yanıtta{" "}
+            Kaynaklar sırayla değil <strong className="font-medium text-clouda-ink">paralel</strong>{" "}
+            sorgulanır ve sıralamaları reciprocal rank fusion ile birleştirilir; birden fazla
+            indeksin bağımsız olarak öne çıkardığı sayfa yukarı taşınır. Ödemeli sağlayıcı yoktur,
+            anahtar gerekmez.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            Açık web&apos;i iki bağımsız indeks karşılar (Marginalia ve mwmbl), geri kalanı dikey
+            kaynaklardır. İki indeks var çünkü her biri tek başına kararsız: ölçümde Marginalia bir
+            sorguyu 202 ms&apos;de yanıtladı, dakikalar sonra aynısını 12 saniyede yanıtlayamadı.
+            Bir kaynak cevap vermezse o sorgu için <em>son bilinen yanıtı</em> devreye girer ve
+            yanıtta bayat olduğu açıkça işaretlenir.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            Cevap vermeyen ya da süreyi kaçıran kaynaklar yanıtta{" "}
             <code className="font-mono">degraded_providers</code> altında görünür — sessizce
-            yutulmaz.
+            yutulmaz. Süreyi kaçıran kaynak iptal edilmez: arka planda tamamlanıp önbelleğe yazar,
+            böylece bir sonraki isteğe yetişir.
           </p>
           <p className="mt-4 text-clouda-muted">
             Cache, sorgunun normalize edilmiş hâline göre çalışır ve tazelik penceresi cache
@@ -549,7 +561,7 @@ const fresh = Math.abs(Date.now() / 1000 - Number(req.headers["x-clouda-timestam
   "credits_remaining": 1680,
   "totals": { "requests": 42, "credits": 320, "errors": 1, "cacheHits": 11 },
   "by_operation": { "search": { "requests": 38, "credits": 240, "avgLatencyMs": 910 } },
-  "provider_success_rate": { "tavily": { "calls": 38, "successRate": 0.974 } },
+  "provider_success_rate": { "marginalia": { "calls": 38, "successRate": 0.974 } },
   "cache_hit_rate": 0.262,
   "error_rate": 0.024,
   "latency_ms": { "p50": 780, "p95": 2140 }
