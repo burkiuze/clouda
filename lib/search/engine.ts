@@ -383,6 +383,11 @@ async function discover(
       const late = captured.get(name);
       if (late && late.length > 0) return { name, results: late };
 
+      // A source that already explained itself — no_results, an error, its own
+      // stale cache — must not also be reported as having missed the deadline.
+      // It answered; the answer was just empty.
+      if (captured.has(name)) return { name, results: [] as RawResult[] };
+
       // A source that ran out of time still has a recent answer on file, and
       // that beats dropping its whole slice of the web. Without this the
       // deadline could only be bought by losing coverage, which is why it had

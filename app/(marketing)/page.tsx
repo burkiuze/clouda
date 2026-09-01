@@ -1,7 +1,7 @@
 import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
 import CodeSnippet from "@/components/CodeSnippet";
-import { CREDITS, SEARCH_SOURCE_COUNT } from "@/lib/constants";
+import { CREDITS, NEWS_FEED_COUNT, SEARCH_SOURCE_COUNT } from "@/lib/constants";
 
 const features = [
   {
@@ -25,6 +25,7 @@ const stats = [
   { value: "2.000", label: "her yeni hesaba ücretsiz kredi" },
   { value: `${CREDITS.search} kredi`, label: "arama isteği başına sabit fiyat" },
   { value: `${SEARCH_SOURCE_COUNT} kaynak`, label: "her sorguda paralel sorgulanır" },
+  { value: `${NEWS_FEED_COUNT} yayıncı`, label: "haber derlemi arka planda taze tutulur" },
 ];
 
 export default function Home() {
@@ -173,7 +174,7 @@ export default function Home() {
       {/* Stats */}
       <section className="border-t border-clouda-border bg-white">
         <div className="mx-auto max-w-[1400px] px-6 py-20 lg:px-10">
-          <div className="grid grid-cols-1 gap-10 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
             {stats.map((s) => (
               <div key={s.label} className="border-t-2 border-clouda-ink pt-6">
                 <p className="display text-5xl">{s.value}</p>

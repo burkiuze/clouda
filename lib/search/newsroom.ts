@@ -186,7 +186,7 @@ async function pullAll(timeoutMs: number): Promise<NewsItem[]> {
  * served in half a second, and the refresh that keeps it current runs after
  * the response has already gone out.
  */
-export async function newsCorpus(): Promise<NewsItem[]> {
+export async function newsCorpus(options: { blocking?: boolean } = {}): Promise<NewsItem[]> {
   const cached = await cacheGet<NewsItem[]>(CORPUS_LOOKUP);
 
   if (cached && cached.payload.length > 0) {
@@ -199,11 +199,21 @@ export async function newsCorpus(): Promise<NewsItem[]> {
     return cached.payload;
   }
 
-  // Awaited, unlike the warm refresh above. The cold path usually runs inside a
-  // request that has already given up waiting for it, and work handed to
-  // `after()` from an abandoned promise may never be scheduled — so the corpus
-  // that just cost twenty-two fetches would be thrown away and re-fetched by
-  // the next request. Awaiting it here keeps that from happening.
+  // Cold, and nobody asked for news specifically. Measured: a general search
+  // for "postgres index bloat" paid a full corpus pull for a source that was
+  // never going to answer it. A search gets the corpus if it is there and
+  // nothing at all if it is not — the pull happens after the response instead.
+  if (!options.blocking) {
+    offload(async () => {
+      const fresh = await pullAll(WARM_FETCH_TIMEOUT_MS);
+      if (fresh.length > 0) await cacheSet(CORPUS_LOOKUP, fresh, CORPUS_TTL_SECONDS);
+    });
+    return [];
+  }
+
+  // Awaited rather than offloaded: this path runs for a request that asked for
+  // news and is waiting on it, and work handed to `after()` here would be
+  // scheduled after the response that needed it.
   const corpus = await pullAll(COLD_FETCH_TIMEOUT_MS);
   if (corpus.length > 0) await cacheSet(CORPUS_LOOKUP, corpus, CORPUS_TTL_SECONDS);
   return corpus;

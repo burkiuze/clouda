@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   }
 
   const started = Date.now();
-  const corpus = await newsCorpus();
+  const corpus = await newsCorpus({ blocking: true });
   const loadMs = Date.now() - started;
 
   const perFeed: Record<string, { items: number; dated: number }> = {};

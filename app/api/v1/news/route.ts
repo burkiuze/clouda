@@ -79,7 +79,7 @@ export const POST = withApi(
     const freshnessHours = parseFreshness(body.freshness) ?? null;
     const wantsContent = body.include_content === true;
 
-    const corpus = await newsCorpus();
+    const corpus = await newsCorpus({ blocking: true });
     if (corpus.length === 0) {
       throw new CloudaError("provider_failed", "Haber kaynakları şu anda yanıt vermiyor.");
     }
