@@ -34,132 +34,86 @@ async function html(url: string): Promise<cheerio.CheerioAPI> {
 
 const probes: Probe[] = [
   {
-    name: "searx-be",
+    name: "mwmbl",
     run: async (q) => {
-      const d = await json<{ results?: { title?: string }[] }>(
-        `https://searx.be/search?q=${encodeURIComponent(q)}&format=json`
+      const d = await json<{ title?: { value?: string }[] }[]>(
+        `https://api.mwmbl.org/api/v1/search/?s=${encodeURIComponent(q)}`
       );
-      const h = d.results ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+      return {
+        count: d.length,
+        sample: d.slice(0, 3).map((x) => (x.title ?? []).map((t) => t.value).join("")),
+      };
     },
   },
   {
-    name: "searxng-site",
+    name: "ddg-lite",
     run: async (q) => {
-      const d = await json<{ results?: { title?: string }[] }>(
-        `https://searxng.site/search?q=${encodeURIComponent(q)}&format=json`
-      );
-      const h = d.results ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+      const res = await safeFetch("https://lite.duckduckgo.com/lite/", {
+        method: "POST",
+        trusted: true,
+        timeoutMs: 12_000,
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ q }).toString(),
+      });
+      const $ = cheerio.load(res.body);
+      const titles: string[] = [];
+      $("a.result-link").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
+      return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
   {
-    name: "opnxng",
+    name: "ecosia",
     run: async (q) => {
-      const d = await json<{ results?: { title?: string }[] }>(
-        `https://opnxng.com/search?q=${encodeURIComponent(q)}&format=json`
-      );
-      const h = d.results ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+      const $ = await html(`https://www.ecosia.org/search?q=${encodeURIComponent(q)}`);
+      const titles: string[] = [];
+      $("a.result__link, .result__title a, [data-test-id='result-link']").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
+      return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
   {
-    name: "yep",
+    name: "startpage",
     run: async (q) => {
-      const d = await json<unknown[]>(
-        `https://api.yep.com/fs/2/search?client=web&gl=US&limit=10&no_correct=false&q=${encodeURIComponent(q)}&safeSearch=strict&type=web`
-      );
-      const block = Array.isArray(d) ? (d[1] as { results?: { title?: string }[] }) : undefined;
-      const h = block?.results ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+      const $ = await html(`https://www.startpage.com/sp/search?query=${encodeURIComponent(q)}`);
+      const titles: string[] = [];
+      $(".w-gl__result-title, .result-title").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
+      return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
   {
-    name: "teclis",
+    name: "qwant",
     run: async (q) => {
-      const d = await json<{ results?: { title?: string }[] }>(
-        `https://teclis.com/search?q=${encodeURIComponent(q)}&format=json`
+      const d = await json<{ data?: { result?: { items?: unknown[] } } }>(
+        `https://api.qwant.com/v3/search/web?q=${encodeURIComponent(q)}&count=10&locale=en_US&offset=0&device=desktop`
       );
-      const h = d.results ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+      const items = d.data?.result?.items ?? [];
+      return { count: items.length, sample: [] };
     },
   },
   {
-    name: "wikidata",
-    run: async (q) => {
-      const d = await json<{ search?: { label?: string; description?: string }[] }>(
-        `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(q)}&language=tr&uselang=tr&format=json&limit=5`
-      );
-      const h = d.search ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.label} — ${x.description ?? ""}`) };
-    },
-  },
-  {
-    name: "semanticscholar",
-    run: async (q) => {
-      const d = await json<{ data?: { title?: string }[] }>(
-        `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=5&fields=title,abstract,url,year`
-      );
-      const h = d.data ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
-    },
-  },
-  {
-    name: "devto",
-    run: async (q) => {
-      const d = await json<{ title?: string }[]>(
-        `https://dev.to/api/articles?per_page=5&tag=&search=${encodeURIComponent(q)}`
-      );
-      return { count: d.length, sample: d.slice(0, 3).map((x) => x.title ?? "?") };
-    },
-  },
-  {
-    name: "crates",
-    run: async (q) => {
-      const d = await json<{ crates?: { name?: string }[] }>(
-        `https://crates.io/api/v1/crates?q=${encodeURIComponent(q)}&per_page=5`
-      );
-      const h = d.crates ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.name ?? "?") };
-    },
-  },
-  {
-    name: "googlebooks",
-    run: async (q) => {
-      const d = await json<{ items?: { volumeInfo?: { title?: string } }[] }>(
-        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5`
-      );
-      const h = d.items ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.volumeInfo?.title ?? "?") };
-    },
-  },
-  {
-    name: "archive-org",
-    run: async (q) => {
-      const d = await json<{ response?: { docs?: { title?: string }[] } }>(
-        `https://archive.org/advancedsearch.php?q=${encodeURIComponent(q)}&fl%5B%5D=title&rows=5&output=json`
-      );
-      const h = d.response?.docs ?? [];
-      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
-    },
-  },
-  {
-    name: "huggingface",
-    run: async (q) => {
-      const d = await json<{ id?: string }[]>(
-        `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&limit=5`
-      );
-      return { count: d.length, sample: d.slice(0, 3).map((x) => x.id ?? "?") };
-    },
-  },
-  {
-    name: "marginalia",
+    name: "marginalia-retry",
     run: async (q) => {
       const d = await json<{ results?: { title?: string }[] }>(
         `https://api.marginalia.nu/public/search/${encodeURIComponent(q)}`
       );
       const h = d.results ?? [];
       return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "pypi",
+    run: async (q) => {
+      const $ = await html(`https://pypi.org/search/?q=${encodeURIComponent(q)}`);
+      const titles: string[] = [];
+      $(".package-snippet__name").each((_, el) => {
+        titles.push($(el).text().trim());
+      });
+      return { count: titles.length, sample: titles.slice(0, 3) };
     },
   },
 ];
