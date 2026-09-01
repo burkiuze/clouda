@@ -128,15 +128,25 @@ başlığıyla, istek başına 10 kredi düşer. Detaylar `/docs` sayfasında.
 | Durum | Süre |
 | --- | --- |
 | Önbellekten | ~40 ms |
-| Taze arama (içerik çıkarımıyla) | ~1,7 sn |
+| Taze arama (içerik çıkarımıyla) | ~1,2 sn |
+| Taze arama (`include_content: false`) | ~0,7 sn |
 
-Önbelleksiz bir aramanın 300 ms'ye inmesi mümkün değil: sekiz dış kaynağa
-sorup sayfaları indirmek tek başına bundan uzun sürer. Bunun yerine iş
-azaltıldı — adaylar indirilmeden önce ucuz sinyallerle sıralanıp yalnızca
-kazananlar getiriliyor, her kaynağın kendi zaman aşımı var ve içerik çıkarımı
-mutlak bir süre bütçesine karşı çalışıp yetişmeyenleri snippet'e düşürüyor.
-`include_content: false` gönderirsen sayfa indirilmez; hem daha hızlıdır hem
-de daha az kredi düşer.
+Önbelleksiz bir aramanın 300 ms'ye inmesi mümkün değil: yedi dış kaynağa
+sorup sayfaları canlı indirmek tek başına bundan uzun sürer. Ağ gidiş
+dönüşleri tabandır. Bunun yerine iş azaltıldı:
+
+- Adaylar indirilmeden önce ucuz sinyallerle sıralanıp yalnızca kazananlar
+  getiriliyor; bir arama en fazla 5 sayfa indirir.
+- `news.google.com` bağlantıları hiç indirilmez — onlar sayfa değil base64
+  yönlendirme sarmalayıcısı, hiçbir zaman içerik çıkmıyor.
+- Her kaynağın kendi süresi var (web indeksi 700 ms, dikey 600 ms) ve süreyi
+  kaçıran kaynak o sorgu için **son bilinen yanıtıyla** temsil ediliyor —
+  yani süreyi kısmak kapsama kaybı anlamına gelmiyor.
+- İçerik çıkarımı isteğin başından itibaren 1,2 sn'lik mutlak bir bütçeye
+  karşı çalışıyor; yetişmeyen sayfa kendi snippet'ine düşüyor.
+
+`include_content: false` gönderirsen sayfa hiç indirilmez; hem yaklaşık iki
+kat hızlıdır hem de tam ücret yerine keşif ücreti düşer.
 
 ## Notlar / sonraki adımlar
 
