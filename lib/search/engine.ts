@@ -459,8 +459,11 @@ async function enrich(
 
   // Results are already ordered by the cheap pre-score, so the budget goes to
   // the ones most likely to be published.
-  // Speculative fetches have already spent their share of the budget.
-  let budget = Math.max(0, MAX_FETCHES - inFlightPages.size);
+  // A speculative fetch that the final ranking kept counts against the budget
+  // like any other; one it discarded is sunk cost, not a charge against the
+  // pages that did make the cut. Subtracting them all up front meant a search
+  // whose early candidates lost could fetch only two of its five.
+  let budget = MAX_FETCHES;
   const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
 
   for (let i = 0; i < results.length; i += MAX_ENRICH_CONCURRENCY) {
@@ -469,11 +472,15 @@ async function enrich(
 
     const pages = await Promise.all(
       batch.map(async (raw) => {
-        // A page already being downloaded is free to use and does not touch
-        // the budget: it was started during discovery and is likely done.
-        const started = inFlightPages.get(raw.url);
-        const page = started
-          ? await started
+        // A page already being downloaded is taken whatever the deadline says:
+        // it was started during discovery and is likely finished. It is keyed
+        // canonically because the copy that survives rank fusion can carry a
+        // different spelling of the same URL than the one prefetched.
+        const speculative = inFlightPages.get(urlKey(raw.url));
+        if (speculative) budget -= 1;
+
+        const page = speculative
+          ? await speculative
           : remaining <= 0 || budget <= 0 || isUnextractable(raw.url)
             ? null
             : await (() => {
@@ -598,9 +605,10 @@ export async function searchWeb(
       .slice(0, PREFETCH_MAX);
 
     for (const candidate of head) {
-      if (inFlightPages.has(candidate.url)) continue;
+      const key = urlKey(candidate.url);
+      if (inFlightPages.has(key)) continue;
       inFlightPages.set(
-        candidate.url,
+        key,
         fetchAndExtract(candidate.url, {
           policy: options.domainPolicy,
           timeoutMs: Math.min(1800, remaining),
