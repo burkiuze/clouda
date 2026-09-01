@@ -44,14 +44,38 @@ export const DEFAULT_LOCALE = "tr-TR";
 const MAX_ENRICH_CONCURRENCY = 12;
 
 /** Pages fetched beyond the requested count, as insurance against dead links. */
-const ENRICH_HEADROOM = 3;
+const ENRICH_HEADROOM = 1;
+
+/**
+ * Ceiling on how many pages one search downloads. Extraction is the whole cost
+ * of a search, and the value of the Nth page falls off fast — the results
+ * below this line keep the snippet their source already returned, which is
+ * what they would have fallen back to on a timeout anyway.
+ */
+const MAX_FETCHES = 5;
+
+/**
+ * Hosts whose links are wrappers rather than pages. Google News RSS items are
+ * base64 redirect stubs: fetching one costs a full round trip and consistently
+ * extracts nothing, which is exactly the "içerik-çıkarılamadı" signal those
+ * results kept carrying. Their own snippet is the better answer and free.
+ */
+const UNEXTRACTABLE = [/(^|\.)news\.google\.com$/i];
+
+function isUnextractable(url: string): boolean {
+  try {
+    return UNEXTRACTABLE.some((p) => p.test(new URL(url).hostname));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Wall-clock cut-off for content extraction, measured from the start of the
  * request. Discovery has already spent part of the budget by the time this
  * stage runs, so it is an absolute deadline rather than a per-stage timeout.
  */
-const ENRICH_DEADLINE_MS = 3000;
+const ENRICH_DEADLINE_MS = 2200;
 
 /**
  * Providers are asked for more than the caller wants. Deduplication, the
@@ -172,7 +196,7 @@ function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
  * answered by Wikipedia and Stack Overflow alone. Verticals are fast APIs, so
  * one that has not answered in 1.5s is in trouble rather than being thorough.
  */
-const DISCOVERY_DEADLINE_MS = { web: 2600, vertical: 1500 } as const;
+const DISCOVERY_DEADLINE_MS = { web: 1800, vertical: 1200 } as const;
 
 /**
  * Resolves with the promise's value, or null once `ms` has passed. The loser
@@ -328,39 +352,45 @@ async function enrich(
   options: SearchOptions,
   deadline: number
 ): Promise<{ raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[]> {
+  const snippetOnly = (raw: RawResult) => ({
+    raw,
+    content: raw.snippet,
+    updatedAt: null,
+    publishedAt: raw.publishedAt ?? null,
+  });
+
+  if (options.includeContent === false) {
+    return results.map((raw) => ({ ...snippetOnly(raw), content: "" }));
+  }
+
+  // Results are already ordered by the cheap pre-score, so the budget goes to
+  // the ones most likely to be published.
+  let budget = MAX_FETCHES;
   const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
 
   for (let i = 0; i < results.length; i += MAX_ENRICH_CONCURRENCY) {
     const batch = results.slice(i, i + MAX_ENRICH_CONCURRENCY);
     const remaining = deadline - Date.now();
 
-    if (remaining <= 0) {
-      out.push(
-        ...batch.map((raw) => ({
-          raw,
-          content: raw.snippet,
-          updatedAt: null,
-          publishedAt: raw.publishedAt ?? null,
-        }))
-      );
-      continue;
-    }
-
     const pages = await Promise.all(
       batch.map(async (raw) => {
-        if (options.includeContent === false) {
-          return { raw, content: "", updatedAt: null, publishedAt: raw.publishedAt ?? null };
+        if (remaining <= 0 || budget <= 0 || isUnextractable(raw.url)) {
+          return snippetOnly(raw);
         }
+        budget -= 1;
+
         const page = await fetchAndExtract(raw.url, {
           policy: options.domainPolicy,
-          timeoutMs: Math.min(3500, remaining),
+          timeoutMs: Math.min(1800, remaining),
         });
+        if (!page) return snippetOnly(raw);
+
         return {
           raw,
-          content: page?.content ?? raw.snippet,
-          updatedAt: page?.updatedAt ?? null,
+          content: page.content || raw.snippet,
+          updatedAt: page.updatedAt,
           // A date from the page itself beats the provider's guess.
-          publishedAt: page?.publishedAt ?? raw.publishedAt ?? null,
+          publishedAt: page.publishedAt ?? raw.publishedAt ?? null,
         };
       })
     );
