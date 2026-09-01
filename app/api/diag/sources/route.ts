@@ -25,6 +25,7 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
   return JSON.parse(res.body) as T;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function html(url: string): Promise<cheerio.CheerioAPI> {
   const res = await safeFetch(url, { trusted: true, timeoutMs: 12_000 });
   if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
@@ -33,18 +34,122 @@ async function html(url: string): Promise<cheerio.CheerioAPI> {
 
 const probes: Probe[] = [
   {
-    name: "stract",
+    name: "searx-be",
     run: async (q) => {
-      const d = await json<{ webpages?: { title?: string }[] }>(
-        "https://stract.com/beta/api/search",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: q }),
-        }
+      const d = await json<{ results?: { title?: string }[] }>(
+        `https://searx.be/search?q=${encodeURIComponent(q)}&format=json`
       );
-      const hits = d.webpages ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
+      const h = d.results ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "searxng-site",
+    run: async (q) => {
+      const d = await json<{ results?: { title?: string }[] }>(
+        `https://searxng.site/search?q=${encodeURIComponent(q)}&format=json`
+      );
+      const h = d.results ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "opnxng",
+    run: async (q) => {
+      const d = await json<{ results?: { title?: string }[] }>(
+        `https://opnxng.com/search?q=${encodeURIComponent(q)}&format=json`
+      );
+      const h = d.results ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "yep",
+    run: async (q) => {
+      const d = await json<unknown[]>(
+        `https://api.yep.com/fs/2/search?client=web&gl=US&limit=10&no_correct=false&q=${encodeURIComponent(q)}&safeSearch=strict&type=web`
+      );
+      const block = Array.isArray(d) ? (d[1] as { results?: { title?: string }[] }) : undefined;
+      const h = block?.results ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "teclis",
+    run: async (q) => {
+      const d = await json<{ results?: { title?: string }[] }>(
+        `https://teclis.com/search?q=${encodeURIComponent(q)}&format=json`
+      );
+      const h = d.results ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "wikidata",
+    run: async (q) => {
+      const d = await json<{ search?: { label?: string; description?: string }[] }>(
+        `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(q)}&language=tr&uselang=tr&format=json&limit=5`
+      );
+      const h = d.search ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.label} — ${x.description ?? ""}`) };
+    },
+  },
+  {
+    name: "semanticscholar",
+    run: async (q) => {
+      const d = await json<{ data?: { title?: string }[] }>(
+        `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=5&fields=title,abstract,url,year`
+      );
+      const h = d.data ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "devto",
+    run: async (q) => {
+      const d = await json<{ title?: string }[]>(
+        `https://dev.to/api/articles?per_page=5&tag=&search=${encodeURIComponent(q)}`
+      );
+      return { count: d.length, sample: d.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "crates",
+    run: async (q) => {
+      const d = await json<{ crates?: { name?: string }[] }>(
+        `https://crates.io/api/v1/crates?q=${encodeURIComponent(q)}&per_page=5`
+      );
+      const h = d.crates ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.name ?? "?") };
+    },
+  },
+  {
+    name: "googlebooks",
+    run: async (q) => {
+      const d = await json<{ items?: { volumeInfo?: { title?: string } }[] }>(
+        `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5`
+      );
+      const h = d.items ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.volumeInfo?.title ?? "?") };
+    },
+  },
+  {
+    name: "archive-org",
+    run: async (q) => {
+      const d = await json<{ response?: { docs?: { title?: string }[] } }>(
+        `https://archive.org/advancedsearch.php?q=${encodeURIComponent(q)}&fl%5B%5D=title&rows=5&output=json`
+      );
+      const h = d.response?.docs ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
+    },
+  },
+  {
+    name: "huggingface",
+    run: async (q) => {
+      const d = await json<{ id?: string }[]>(
+        `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&limit=5`
+      );
+      return { count: d.length, sample: d.slice(0, 3).map((x) => x.id ?? "?") };
     },
   },
   {
@@ -53,158 +158,8 @@ const probes: Probe[] = [
       const d = await json<{ results?: { title?: string }[] }>(
         `https://api.marginalia.nu/public/search/${encodeURIComponent(q)}`
       );
-      const hits = d.results ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
-    },
-  },
-  {
-    name: "searchmysite",
-    run: async (q) => {
-      const d = await json<{ results?: { title?: string }[] }>(
-        `https://searchmysite.net/api/v1/search/?q=${encodeURIComponent(q)}`
-      );
-      const hits = d.results ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
-    },
-  },
-  {
-    name: "wiby",
-    run: async (q) => {
-      const d = await json<{ Title?: string }[]>(
-        `https://wiby.me/json/?q=${encodeURIComponent(q)}`
-      );
-      return { count: d.length, sample: d.slice(0, 3).map((h) => h.Title ?? "?") };
-    },
-  },
-  {
-    name: "ddg-instant-answer",
-    run: async (q) => {
-      const d = await json<{
-        AbstractText?: string;
-        RelatedTopics?: { Text?: string; FirstURL?: string }[];
-      }>(`https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1`);
-      const topics = (d.RelatedTopics ?? []).filter((t) => t.FirstURL);
-      return {
-        count: topics.length + (d.AbstractText ? 1 : 0),
-        sample: topics.slice(0, 3).map((t) => (t.Text ?? "?").slice(0, 80)),
-      };
-    },
-  },
-  {
-    name: "mdn",
-    run: async (q) => {
-      const d = await json<{ documents?: { title?: string }[] }>(
-        `https://developer.mozilla.org/api/v1/search?q=${encodeURIComponent(q)}&locale=en-US`
-      );
-      const hits = d.documents ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
-    },
-  },
-  {
-    name: "openalex",
-    run: async (q) => {
-      const d = await json<{ results?: { title?: string }[] }>(
-        `https://api.openalex.org/works?search=${encodeURIComponent(q)}&per-page=5&mailto=hello@clouda.dev`
-      );
-      const hits = d.results ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
-    },
-  },
-  {
-    name: "stackexchange-excerpts",
-    run: async (q) => {
-      const d = await json<{ items?: { title?: string }[] }>(
-        `https://api.stackexchange.com/2.3/search/excerpts?order=desc&sort=relevance&q=${encodeURIComponent(
-          q
-        )}&site=stackoverflow&pagesize=5`
-      );
-      const hits = d.items ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
-    },
-  },
-  {
-    name: "reddit",
-    run: async (q) => {
-      const d = await json<{ data?: { children?: { data?: { title?: string } }[] } }>(
-        `https://www.reddit.com/search.json?q=${encodeURIComponent(q)}&limit=5`
-      );
-      const hits = d.data?.children ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.data?.title ?? "?") };
-    },
-  },
-  {
-    name: "openlibrary",
-    run: async (q) => {
-      const d = await json<{ docs?: { title?: string }[] }>(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=5`
-      );
-      const hits = d.docs ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.title ?? "?") };
-    },
-  },
-  {
-    name: "npm",
-    run: async (q) => {
-      const d = await json<{ objects?: { package?: { name?: string } }[] }>(
-        `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(q)}&size=5`
-      );
-      const hits = d.objects ?? [];
-      return { count: hits.length, sample: hits.slice(0, 3).map((h) => h.package?.name ?? "?") };
-    },
-  },
-  {
-    name: "arxiv",
-    run: async (q) => {
-      const $ = await html(
-        `http://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(q)}&max_results=5`
-      );
-      const titles: string[] = [];
-      $("entry > title").each((_, el) => {
-        titles.push($(el).text().trim());
-      });
-      return { count: titles.length, sample: titles.slice(0, 3) };
-    },
-  },
-  {
-    name: "mojeek",
-    run: async (q) => {
-      const $ = await html(`https://www.mojeek.com/search?q=${encodeURIComponent(q)}`);
-      const titles: string[] = [];
-      $("a.title, .results-standard li h2 a").each((_, el) => {
-        titles.push($(el).text().trim());
-      });
-      return { count: titles.length, sample: titles.slice(0, 3) };
-    },
-  },
-  {
-    name: "lobsters",
-    run: async (q) => {
-      const $ = await html(
-        `https://lobste.rs/search?q=${encodeURIComponent(q)}&what=stories&order=relevance`
-      );
-      const titles: string[] = [];
-      $(".story .u-url").each((_, el) => {
-        titles.push($(el).text().trim());
-      });
-      return { count: titles.length, sample: titles.slice(0, 3) };
-    },
-  },
-  {
-    name: "ddg-html",
-    run: async (q) => {
-      const res = await safeFetch("https://html.duckduckgo.com/html/", {
-        method: "POST",
-        trusted: true,
-        timeoutMs: 12_000,
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ q }).toString(),
-      });
-      const $ = cheerio.load(res.body);
-      const titles: string[] = [];
-      $(".result__a").each((_, el) => {
-        titles.push($(el).text().trim());
-      });
-      return { count: titles.length, sample: titles.slice(0, 3) };
+      const h = d.results ?? [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => x.title ?? "?") };
     },
   },
 ];

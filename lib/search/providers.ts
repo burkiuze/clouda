@@ -43,7 +43,10 @@ export interface Provider {
  * where a slow reply means trouble, not depth.
  */
 const PROVIDER_TIMEOUT = 2500;
-const MARGINALIA_TIMEOUT = 5000;
+// Marginalia's public API rate-limits, and a fan-out cannot wait on a source
+// that may simply refuse: it contributes when it answers quickly and is
+// skipped when it does not.
+const MARGINALIA_TIMEOUT = 2500;
 
 async function getJson<T>(url: string, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT): Promise<T | null> {
   try {
@@ -131,7 +134,19 @@ const wikipedia: Provider = {
  * empty snippet and score poorly for relevance. Excerpts carry no link field,
  * so the URL is built from the question id.
  */
-const SE_SITES = ["stackoverflow", "superuser", "serverfault", "unix", "askubuntu", "dba"];
+/**
+ * Site key to hostname. Not derivable: the older sites kept their own domains
+ * while later ones live under stackexchange.com, and assuming the pattern
+ * produced links like serverfault.stackexchange.com, which does not exist.
+ */
+const SE_SITES: { site: string; host: string }[] = [
+  { site: "stackoverflow", host: "stackoverflow.com" },
+  { site: "superuser", host: "superuser.com" },
+  { site: "serverfault", host: "serverfault.com" },
+  { site: "askubuntu", host: "askubuntu.com" },
+  { site: "unix", host: "unix.stackexchange.com" },
+  { site: "dba", host: "dba.stackexchange.com" },
+];
 
 const stackexchange: Provider = {
   name: "stackexchange",
@@ -140,7 +155,7 @@ const stackexchange: Provider = {
     const perSite = Math.max(3, Math.ceil(limit / 2));
 
     const lists = await Promise.all(
-      SE_SITES.slice(0, 3).map(async (site) => {
+      SE_SITES.slice(0, 3).map(async ({ site, host }) => {
         const data = await getJson<{
           items?: {
             question_id?: number;
@@ -157,7 +172,7 @@ const stackexchange: Provider = {
           .filter((i) => i.title && i.question_id)
           .map<RawResult>((i) => ({
             title: i.title as string,
-            url: `https://${site === "stackoverflow" ? "stackoverflow.com" : `${site}.stackexchange.com`}/q/${i.question_id}`,
+            url: `https://${host}/q/${i.question_id}`,
             snippet: plain(i.excerpt),
             publishedAt: i.last_activity_date
               ? new Date(i.last_activity_date * 1000).toISOString()
