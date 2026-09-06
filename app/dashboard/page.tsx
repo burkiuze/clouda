@@ -98,6 +98,47 @@ export default async function DashboardPage() {
           </div>
         </div>
 
+        <div className="mt-10 card p-8">
+          <p className="eyebrow-plain">ajanını bağla</p>
+          <h2 className="display mt-3 text-2xl">MCP sunucusu</h2>
+          <p className="mt-4 max-w-3xl text-clouda-muted">
+            REST API, senin yazdığın kod için. Bu, modelin kendisi için: istemcini bir kez bu
+            adrese yönlendir, araç listesini okusun, model artık web&apos;de aramayı başka
+            herhangi bir aracı çağırdığı gibi çağırsın. Kimlik doğrulama aynı anahtarla, yani
+            anahtarın özellikleri ve kredi sınırı burada da aynen geçerli.
+          </p>
+          <pre className="mt-5 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed text-clouda-ink">
+{`{
+  "mcpServers": {
+    "clouda": {
+      "type": "http",
+      "url": "https://clouda.dev/api/mcp",
+      "headers": { "Authorization": "Bearer <anahtarın>" }
+    }
+  }
+}`}
+          </pre>
+          <div className="mt-6 flex flex-wrap gap-2">
+            {[
+              ["clouda_search", "web araması"],
+              ["clouda_news", "canlı haber"],
+              ["clouda_data", "hava, kur, hisse, deprem"],
+              ["clouda_map", "sitenin tüm adresleri"],
+              ["clouda_extract", "adresi metne çevir"],
+              ["clouda_answer", "kaynaklı cevap"],
+              ["clouda_rerank", "belge sıralama"],
+              ["clouda_chunk", "metin parçalama"],
+            ].map(([name, what]) => (
+              <span
+                key={name}
+                className="rounded-full border border-clouda-border px-3 py-1.5 text-xs text-clouda-muted"
+              >
+                <code className="font-mono text-clouda-ink">{name}</code> · {what}
+              </span>
+            ))}
+          </div>
+        </div>
+
         <div className="mt-10">
           <p className="eyebrow-plain">son 24 saat</p>
           <h2 className="display mt-3 text-2xl">Kullanım ve performans</h2>
