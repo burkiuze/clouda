@@ -639,10 +639,12 @@ const packages: Provider = {
  * preprints, Europe PMC the biomedical literature, DOAJ the open-access
  * journals.
  *
- * arXiv is here despite timing out at six seconds in the first measurement. It
- * answered the identical query in 87ms on the retry, so the timeout was a bad
- * minute rather than a property of the source — and the fan-out is built to
- * survive exactly that.
+ * arXiv is simply erratic, and measured to be: 6s timeout, then 87ms, then
+ * 11.2s, on the same query from the same place. It is kept for the same reason
+ * Marginalia is — when it answers it answers well, and the architecture is
+ * built so that a source having a bad minute costs coverage rather than time.
+ * Its slow runs are cut off by the provider timeout and its slot is filled by
+ * the two indexes beside it.
  */
 const scholar: Provider = {
   tier: "vertical",

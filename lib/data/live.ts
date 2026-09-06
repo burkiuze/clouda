@@ -295,54 +295,149 @@ async function earthquakes(minMagnitude: number, hours: number): Promise<DataRes
 
 /* ------------------------------------------------------------- country */
 
-async function country(name: string): Promise<DataResult> {
-  const data = await json<
-    {
-      name?: { common?: string; official?: string };
-      cca2?: string;
-      capital?: string[];
-      region?: string;
-      subregion?: string;
-      population?: number;
-      area?: number;
-      languages?: Record<string, string>;
-      currencies?: Record<string, { name?: string; symbol?: string }>;
-      timezones?: string[];
-      latlng?: number[];
-    }[]
-  >(
-    `https://restcountries.com/v3.1/name/${encodeURIComponent(name)}?fields=name,cca2,capital,region,subregion,population,area,languages,currencies,timezones,latlng`
-  );
+interface WorldBankCountry {
+  id?: string;
+  iso2Code?: string;
+  name?: string;
+  region?: { id?: string; value?: string };
+  adminregion?: { value?: string };
+  incomeLevel?: { value?: string };
+  capitalCity?: string;
+  longitude?: string;
+  latitude?: string;
+}
 
-  const hit = Array.isArray(data) ? data[0] : null;
+/**
+ * The country list, fetched once and held for a day.
+ *
+ * REST Countries was the obvious source and it is not here: five different
+ * spellings and both of its lookup endpoints returned nothing from this
+ * deployment, measured. The World Bank's country register answers reliably —
+ * it is already the source behind the indicator series — but it only looks up
+ * by code, so the whole register is pulled once and matched by name locally.
+ * Three hundred rows is a small price for a lookup that works.
+ */
+async function countryRegister(): Promise<WorldBankCountry[]> {
+  const lookup = { namespace: "livedata", query: "worldbank:countries", locale: "-" };
+
+  const cached = await cacheGet<WorldBankCountry[]>(lookup);
+  if (cached && cached.payload.length > 0) return cached.payload;
+
+  const payload = await json<unknown[]>(
+    "https://api.worldbank.org/v2/country?format=json&per_page=400"
+  );
+  const rows = Array.isArray(payload) && Array.isArray(payload[1])
+    ? (payload[1] as WorldBankCountry[])
+    : [];
+
+  // Aggregates ("Euro area", "Low income") are in the same register and are
+  // not countries; they carry the region id "NA".
+  const countries = rows.filter((row) => row.region?.id && row.region.id !== "NA");
+  if (countries.length > 0) await cacheSet(lookup, countries, TTL.country);
+  return countries;
+}
+
+function normaliseName(value: string): string {
+  return value
+    .toLocaleLowerCase("tr")
+    .replace(/[ıİ]/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** A handful of names people use that the register does not carry. */
+const COUNTRY_ALIASES: Record<string, string> = {
+  turkiye: "TR",
+  turkey: "TR",
+  usa: "US",
+  unitedstates: "US",
+  america: "US",
+  uk: "GB",
+  england: "GB",
+  britain: "GB",
+  southkorea: "KR",
+  northkorea: "KP",
+  russia: "RU",
+  iran: "IR",
+  syria: "SY",
+  egypt: "EG",
+  netherlands: "NL",
+  holland: "NL",
+  almanya: "DE",
+  fransa: "FR",
+  ingiltere: "GB",
+  yunanistan: "GR",
+  italya: "IT",
+  ispanya: "ES",
+  rusya: "RU",
+  cin: "CN",
+  japonya: "JP",
+  hindistan: "IN",
+  brezilya: "BR",
+  misir: "EG",
+  suriye: "SY",
+  azerbaycan: "AZ",
+};
+
+async function country(name: string): Promise<DataResult> {
+  const register = await countryRegister();
+  if (register.length === 0) {
+    throw new CloudaError("provider_failed", "Ülke kaydı şu anda alınamıyor.");
+  }
+
+  const wanted = normaliseName(name);
+  const aliased = COUNTRY_ALIASES[wanted];
+
+  const hit =
+    register.find((row) => row.iso2Code?.toLowerCase() === (aliased ?? name).toLowerCase()) ??
+    register.find((row) => row.id?.toLowerCase() === name.toLowerCase()) ??
+    register.find((row) => normaliseName(row.name ?? "") === wanted) ??
+    register.find((row) => normaliseName(row.name ?? "").includes(wanted) && wanted.length >= 4);
+
   if (!hit) throw new CloudaError("not_found", `Ülke bulunamadı: ${name}`, { name });
+
+  // Population comes from the indicator series rather than the register, which
+  // does not carry it. It is fetched alongside rather than in a second call by
+  // the caller, because "how many people live there" is the question that
+  // follows this one in nine cases out of ten.
+  let population: { year?: string; value?: number | null } | null = null;
+  try {
+    const series = await indicator(hit.iso2Code ?? hit.id ?? "", "population", 1);
+    const latest = (series.data.latest ?? null) as { year?: string; value?: number | null } | null;
+    population = latest;
+  } catch {
+    // A country without a population series is still a country.
+  }
 
   return {
     kind: "country",
-    source: "restcountries",
-    observedAt: null,
+    source: "world bank",
+    observedAt: population?.year ? `${population.year}-12-31` : null,
     retrievedAt: new Date().toISOString(),
     data: {
-      name: hit.name?.common ?? name,
-      official_name: hit.name?.official ?? null,
-      code: hit.cca2 ?? null,
-      capital: hit.capital?.[0] ?? null,
-      region: [hit.region, hit.subregion].filter(Boolean).join(" / ") || null,
-      population: hit.population ?? null,
-      area_km2: hit.area ?? null,
-      languages: Object.values(hit.languages ?? {}),
-      currencies: Object.entries(hit.currencies ?? {}).map(([code, c]) => ({
-        code,
-        name: c.name ?? null,
-        symbol: c.symbol ?? null,
-      })),
-      timezones: hit.timezones ?? [],
-      coordinates: hit.latlng ? { latitude: hit.latlng[0], longitude: hit.latlng[1] } : null,
+      name: hit.name ?? name,
+      code: hit.iso2Code ?? null,
+      iso3: hit.id ?? null,
+      capital: hit.capitalCity || null,
+      region: hit.region?.value ?? null,
+      sub_region: hit.adminregion?.value || null,
+      income_level: hit.incomeLevel?.value ?? null,
+      population: population?.value ?? null,
+      population_year: population?.year ?? null,
+      coordinates:
+        hit.latitude && hit.longitude
+          ? { latitude: Number(hit.latitude), longitude: Number(hit.longitude) }
+          : null,
     },
   };
 }
 
 /* ----------------------------------------------------------- indicator */
+/* Declared after `country`, which calls it: function declarations hoist. */
 
 /** The handful of World Bank series a caller is most likely to want by name. */
 const INDICATORS: Record<string, { code: string; label: string }> = {
