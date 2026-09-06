@@ -106,6 +106,16 @@ kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalış
 
 5. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
 
+6. (Önerilen) `DIAG_TOKEN` — `/api/diag/selftest` ucunu korur. Bu uç, deploy'un
+   canlı internete karşı gerçekten çalışıp çalışmadığını içeriden ölçer: yedi
+   canlı veri türü, iki site haritası, arama, haber derlemi, sekiz MCP aracı ve
+   beş protokol iddiası — toplam 27 kontrol.
+
+   Tanımlamazsan yedek bir token kullanılır ve **o token herkese açık depoda
+   duruyor**; saatte 12 istekle sınırlı ve yalnızca okuma yapıyor, ama kendi
+   değerini tanımlaman daha doğru. Yanıt, yedek token kullanılıyorsa bunu
+   `warning` alanında söyler.
+
 Hepsini ekledikten sonra Vercel'de **Redeploy** yap. Kurulumun doğru olup
 olmadığını tek istekle görebilirsin:
 
@@ -230,6 +240,22 @@ karşılığını hemen verdi:
 - `running` → `runn` olup `run` ile eşleşmiyordu; `address` sondaki s'sini
   kaybedip `addresses` ile eşleşmiyordu; `queries` → `quer` hiçbir şeyle
   eşleşmiyordu.
+
+## Kendi kendini test etme
+
+```
+https://<vercel-domainin>/api/diag/selftest?token=<DIAG_TOKEN>
+```
+
+Yeni uçların hepsi bir API anahtarının arkasında POST olduğu için dışarıdan
+GET ile doğrulanamıyor. Bu uç, aynı modül fonksiyonlarını içeriden çağırır ve
+anahtar gerektirmeyen MCP metotlarına kendi adresimizden gerçek JSON-RPC
+gönderir. Ölçülen son çalıştırma: **27/27, 2,4 sn**.
+
+Yakaladığı hatalar, yalnızca canlı yanıtta görünen türden: `/api/v1/answer`
+bir Stack Overflow **sorusunu** cevap diye alıntılıyordu — soru sayfasında en
+konuyla ilgili metin sorunun kendisidir, dolayısıyla altındaki gerçek
+cevaplardan yüksek puan alır.
 
 ## Notlar / sonraki adımlar
 
