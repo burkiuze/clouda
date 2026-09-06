@@ -7,7 +7,8 @@
     "build": "prisma generate && node scripts/migrate.mjs && next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test": "tsc lib/rank/bm25.ts lib/rank/chunk.ts --outDir .test-build --module esnext --target es2022 --moduleResolution bundler --skipLibCheck && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

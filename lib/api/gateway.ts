@@ -37,7 +37,15 @@ export interface HandlerResult {
   label: string;
 }
 
-async function resolveKey(req: NextRequest): Promise<ApiContext> {
+/**
+ * Authenticates a request and returns its context.
+ *
+ * Exported because the MCP endpoint needs the same authentication, capability
+ * set and domain policy as the REST routes but cannot use `withApi`: one MCP
+ * request carries a whole JSON-RPC method call, and billing is decided per
+ * tool inside it rather than per HTTP request.
+ */
+export async function resolveKey(req: NextRequest): Promise<ApiContext> {
   const header = req.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : null;
   if (!token) {
@@ -85,7 +93,7 @@ async function resolveKey(req: NextRequest): Promise<ApiContext> {
  * share no memory, so the count has to come from the database to be correct
  * across concurrent lambdas.
  */
-async function enforceRateLimit(ctx: ApiContext): Promise<void> {
+export async function enforceRateLimit(ctx: ApiContext): Promise<void> {
   const since = new Date(Date.now() - 60_000);
   const recent = await prisma.usageLog.count({
     where: { apiKeyId: ctx.apiKeyId, createdAt: { gte: since } },
@@ -110,7 +118,7 @@ async function enforceRateLimit(ctx: ApiContext): Promise<void> {
  * clause, so the database decides who gets the last credit, and a row count of
  * zero is the refusal. Whatever the operation does not spend is refunded.
  */
-async function reserve(ctx: ApiContext, estimate: number): Promise<void> {
+export async function reserve(ctx: ApiContext, estimate: number): Promise<void> {
   if (estimate <= 0) return;
 
   await prisma.$transaction(async (tx) => {
@@ -145,7 +153,7 @@ async function reserve(ctx: ApiContext, estimate: number): Promise<void> {
 }
 
 /** Returns unspent credits and reports the resulting balance. */
-async function refund(ctx: ApiContext, amount: number): Promise<number> {
+export async function refund(ctx: ApiContext, amount: number): Promise<number> {
   if (amount <= 0) {
     const user = await prisma.user.findUnique({
       where: { id: ctx.userId },

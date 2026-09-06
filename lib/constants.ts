@@ -66,6 +66,14 @@ export const CREDITS = {
   /** Extraction is one fetch per URL and no discovery, so it is cheaper than search. */
   extractBase: 1,
   extractPerUrl: 1,
+  /**
+   * Reranking and chunking touch no network at all: they are computation over
+   * text the caller already has, answered in milliseconds. Charging them the
+   * search rate would price the work we did not do. They are not free, because
+   * they still cost a request, authentication and CPU.
+   */
+  rerank: 1,
+  chunk: 1,
 } as const;
 
 /**

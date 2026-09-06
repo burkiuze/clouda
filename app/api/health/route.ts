@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { missingAuthConfig } from "@/lib/config";
+import { healthSnapshot } from "@/lib/core/breaker";
 
 /**
  * One request that answers "is this deployment actually wired up?".
@@ -60,10 +61,24 @@ export async function GET() {
   // degrades rather than breaks, so it does not decide the overall status.
   const ready = checks.database.ok && checks.sessionSecret.ok;
 
+  // What this instance has learned about each source it has called: success
+  // rate, average latency, and whether its circuit is currently open. Empty on
+  // a cold instance, which is a fact about the report rather than about the
+  // sources — the breaker's memory is per-instance and deliberately so.
+  const sources = healthSnapshot();
+
   return NextResponse.json(
     {
       ready,
       checks,
+      sources: {
+        observed: sources.length,
+        open_circuits: sources.filter((s) => s.state === "open").map((s) => s.source),
+        detail: sources,
+        note:
+          "Bu tablo yalnızca bu sunucu örneğinin gördüklerini yansıtır; devre kesici " +
+          "durumu örnekler arasında paylaşılmaz ve soğuk başlangıçta sıfırlanır.",
+      },
       missing: missing.map((m) => m.name),
     },
     { status: ready ? 200 : 503 }

@@ -33,7 +33,27 @@ const CSP = [
   "upgrade-insecure-requests",
 ].join("; ");
 
+/** Endpoints meant to be called from other origins with a Bearer key. */
+function isPublicApi(pathname: string): boolean {
+  return pathname.startsWith("/api/v1/") || pathname === "/api/mcp" || pathname === "/api/health";
+}
+
 export function middleware(req: NextRequest) {
+  // A preflight must be answered before anything else: the browser sends it
+  // without the Authorization header, so letting it reach a route that demands
+  // one would fail every cross-origin call.
+  if (req.method === "OPTIONS" && isPublicApi(req.nextUrl.pathname)) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type, MCP-Protocol-Version",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
   const res = NextResponse.next();
   const isDev = process.env.NODE_ENV === "development";
 
@@ -67,6 +87,26 @@ export function middleware(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/api/")) {
     res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
     res.headers.set("X-Robots-Tag", "noindex");
+  }
+
+  // The public API and the MCP endpoint are called from other origins by
+  // design — agent runtimes, notebooks, browser-side clients.
+  //
+  // Allowing any origin is safe here specifically because these endpoints
+  // authenticate with a Bearer header and never with a cookie: a page on
+  // another origin can only reach them by supplying a key it already has, and
+  // a browser will not attach our session cookie to the request. That is also
+  // why credentials are not allowed — enabling both together is the
+  // combination that turns this into cross-site request forgery.
+  if (isPublicApi(req.nextUrl.pathname)) {
+    res.headers.set("Access-Control-Allow-Origin", "*");
+    res.headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version");
+    res.headers.set(
+      "Access-Control-Expose-Headers",
+      "X-Clouda-Credits-Remaining, X-Clouda-RateLimit-Limit"
+    );
+    res.headers.set("Access-Control-Max-Age", "86400");
   }
 
   return res;

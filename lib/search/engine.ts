@@ -1,5 +1,6 @@
 import { cacheGet, cacheSet, ttlForIntent } from "@/lib/core/cache";
 import { offload } from "@/lib/core/offload";
+import { circuitOpen, recordFailure, recordSuccess } from "@/lib/core/breaker";
 import { CloudaError } from "@/lib/core/errors";
 import { filterUnsafe } from "@/lib/search/safety";
 import { hostMatches } from "@/lib/core/security";
@@ -361,17 +362,34 @@ async function runProvider(
     return [];
   };
 
+  // A source that has failed repeatedly is not asked at all. Without this a
+  // source being down cost every query its full deadline; now it costs one
+  // query per cooldown. Its last answer still stands in, so the result set is
+  // no thinner than it would have been.
+  const circuit = circuitOpen(provider.name);
+  if (circuit.open) return fallback(circuit.reason ?? "circuit_open");
+
+  const startedAt = Date.now();
+
   try {
     const results = await provider.search(query, limit, locale, freshnessHours);
-    if (results.length === 0) return fallback("no_results");
+    if (results.length === 0) {
+      // An empty answer is not a failure: the source worked and had nothing.
+      // Counting it as one would break the circuit on an obscure query.
+      recordSuccess(provider.name, Date.now() - startedAt);
+      return fallback("no_results");
+    }
 
     // Deliberately not awaited: this write only matters to a later request,
     // and the extraction stage that follows gives it ample time to land.
     // Awaiting it would add a database round trip per source to every search.
     void cacheSet(lookup, results, PROVIDER_CACHE_TTL_SECONDS);
+    recordSuccess(provider.name, Date.now() - startedAt);
     return results;
   } catch (err) {
-    return fallback(err instanceof Error ? err.message.slice(0, 100) : "failed");
+    const reason = err instanceof Error ? err.message.slice(0, 100) : "failed";
+    recordFailure(provider.name, reason);
+    return fallback(reason);
   }
 }
 
