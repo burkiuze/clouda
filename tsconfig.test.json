@@ -1,0 +1,22 @@
+{
+  "//": "Compiles only the dependency-free modules, so `npm test` can run them under node --test without pulling in Next, Prisma or the search stack.",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "outDir": ".test-build",
+    "skipLibCheck": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "files": [
+    "lib/rank/bm25.ts",
+    "lib/rank/chunk.ts",
+    "lib/research/questions.ts"
+  ]
+}

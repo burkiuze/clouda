@@ -11,8 +11,9 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rank, tokenize, stem } from "../.test-build/bm25.js";
-import { chunkText } from "../.test-build/chunk.js";
+import { rank, tokenize, stem } from "../.test-build/rank/bm25.js";
+import { chunkText } from "../.test-build/rank/chunk.js";
+import { isQuestion } from "../.test-build/research/questions.js";
 
 test("stemming folds Turkish and English morphology", () => {
   assert.ok(stem("indekslerinden").startsWith("indeks"));
@@ -109,4 +110,23 @@ test("chunking degrades safely", () => {
   assert.equal(chunkText("").length, 0);
   assert.equal(chunkText("Just a sentence.").length, 1);
   assert.ok(chunkText("x".repeat(3000), { size: 500 }).length >= 5);
+});
+
+test("a question is not an answer", () => {
+  // The exact sentence that reached a live answer: a Stack Overflow question,
+  // quoted verbatim and served as though it were the answer to it.
+  assert.ok(
+    isQuestion(
+      "Question: Considering the same example taken in the above link, when we reindex " +
+        "the data from my_index_v1 to my_index_v2 using the reindex API, what happens?"
+    )
+  );
+  assert.ok(isQuestion("How do I fix index bloat in Postgres?"));
+  assert.ok(isQuestion("Nasıl reindex yapılır?"));
+  assert.ok(isQuestion("I am trying to rebuild an index without locking writes."));
+
+  // And the statements that must survive, or the answer has nothing left.
+  assert.ok(!isQuestion("REINDEX CONCURRENTLY rebuilds the index without an exclusive lock."));
+  assert.ok(!isQuestion("Autovacuum reclaims dead tuples but does not shrink an index."));
+  assert.ok(!isQuestion("According to the docs, the operation requires twice the disk space."));
 });
