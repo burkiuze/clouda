@@ -122,4 +122,10 @@ export const LIMITS = {
   loginByAccount: { action: "login_account", limit: 8, windowSeconds: 900 },
   demoSearch: { action: "demo", limit: 8, windowSeconds: 300 },
   keyCreate: { action: "key_create", limit: 10, windowSeconds: 3600 },
+  /**
+   * Diagnostics fan out to dozens of third parties per call. The token keeps
+   * them private; this keeps a leaked token from turning the deployment into
+   * someone else's request amplifier.
+   */
+  diagnostics: { action: "diag", limit: 12, windowSeconds: 3600 },
 } satisfies Record<string, LimitRule>;
