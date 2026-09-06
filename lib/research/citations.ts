@@ -58,13 +58,37 @@ const NOISE_MARKERS = [
   /\b(share this|read more|advertisement|sign in|log in)\b/i,
 ];
 
+/**
+ * Sentences that ask rather than state.
+ *
+ * Measured live: asked what REINDEX CONCURRENTLY does, the answer opened with
+ * "Question: Considering the same example taken in the above link, when we
+ * reindex..." — a Stack Overflow question quoted back as though it were the
+ * answer. It is a real hazard of extraction from Q&A sites, which are among
+ * the best sources here: the question is the most on-topic text on the page,
+ * so it scores highest, and a question presented as an answer is worse than no
+ * answer at all.
+ */
+const INTERROGATIVE = [
+  /\?\s*$/,
+  /^\s*(question|soru)\s*[:.]/i,
+  /^\s*(how|what|why|when|where|which|who|can|does|do|is|are|should|would|could|has|have)\b[^.!]*\?/i,
+  /^\s*(nasıl|neden|niçin|ne zaman|nerede|hangi|kim|mı|mi|mu|mü)\b[^.!]*\?/i,
+  /\b(any (idea|help|suggestions)|please help|i am trying to|i'm trying to|denedim ama)\b/i,
+];
+
+function isQuestion(sentence: string): boolean {
+  return INTERROGATIVE.some((pattern) => pattern.test(sentence));
+}
+
 function sentences(text: string): string[] {
   return text
     .split(/\n+/)
     .flatMap((line) => line.split(SENTENCE_SPLIT))
     .map((s) => s.replace(/\s+/g, " ").trim())
     .filter((s) => s.length >= 45 && s.length <= 400)
-    .filter((s) => !NOISE_MARKERS.some((n) => n.test(s)));
+    .filter((s) => !NOISE_MARKERS.some((n) => n.test(s)))
+    .filter((s) => !isQuestion(s));
 }
 
 function isFactual(sentence: string): boolean {

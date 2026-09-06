@@ -176,6 +176,9 @@ export async function GET(req: NextRequest) {
     clouda_news: { query: "ekonomi", max_results: 3 },
     clouda_extract: { urls: ["https://en.wikipedia.org/wiki/Database_index"] },
     clouda_answer: { question: "what does REINDEX CONCURRENTLY do", max_sources: 4 },
+    // The stub above is exercised for its shape; the assertion that the answer
+    // is not itself a question lives in the check below.
+
     clouda_rerank: { query: "index bloat", documents: ["Index bloat grows.", "Boil pasta."] },
     clouda_chunk: { text: "# Baslik\n\n" + "Cumle. ".repeat(200), size: 400 },
     clouda_data: { kind: "fx", base: "USD", symbols: ["TRY"] },
@@ -190,6 +193,17 @@ export async function GET(req: NextRequest) {
         const { text, credits } = await (found as typeof tool).run(toolArgs[tool.name] ?? {}, STUB);
         expect(text.length > 0, "araç boş metin döndürdü");
         expect(credits >= 0, "negatif kredi");
+
+        // An answer that quotes a question back is worse than no answer, and
+        // this is the check that caught it happening.
+        if (tool.name === "clouda_answer") {
+          const opening = text.split("\n")[0] ?? "";
+          expect(
+            !/\?\s*$/.test(opening.trim()) && !/^\s*\d+\.\s*(question|soru)\s*:/i.test(opening),
+            `cevap bir soruyla açıldı: ${opening.slice(0, 100)}`
+          );
+        }
+
         return `${credits} kredi, ${text.length} karakter: ${text.replace(/\s+/g, " ").slice(0, 130)}`;
       })
     );
