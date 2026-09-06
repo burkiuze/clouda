@@ -30,6 +30,34 @@ const endpoints = [
   },
   {
     method: "POST",
+    path: "/api/v1/data",
+    capability: "her zaman açık",
+    cost: `${CREDITS.data} kredi`,
+    summary: "Hava, kur, kripto, hisse, deprem, ülke, ekonomik gösterge — sayı olarak.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/map",
+    capability: "her zaman açık",
+    cost: `${CREDITS.map} kredi`,
+    summary: "Bir sitenin yayımladığı bütün adresleri kendi site haritasından çıkarır.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/rerank",
+    capability: "her zaman açık",
+    cost: `${CREDITS.rerank} kredi`,
+    summary: "Kendi belgelerini bir sorguya göre sıralar. Ağ kullanmaz.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/chunk",
+    capability: "her zaman açık",
+    cost: `${CREDITS.chunk} kredi`,
+    summary: "Uzun metni başlık yapısını koruyarak modele hazır parçalara böler.",
+  },
+  {
+    method: "POST",
     path: "/api/v1/research",
     capability: "research",
     cost: `${CREDITS.researchBase} + arama başına ${CREDITS.researchPerSearch}`,
@@ -69,6 +97,20 @@ const endpoints = [
     capability: "monitor",
     cost: `kontrol başına ${CREDITS.monitorCheck}`,
     summary: "URL ya da sorgu izler, değişince webhook gönderir.",
+  },
+  {
+    method: "POST",
+    path: "/api/mcp",
+    capability: "her zaman açık",
+    cost: "araca göre",
+    summary: "MCP sunucusu. Ajan doğrudan bağlanır, sekiz araç yerli gibi çalışır.",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/openapi",
+    capability: "açık",
+    cost: "ücretsiz",
+    summary: "Makine tarafından okunabilir OpenAPI 3.1 şeması.",
   },
   {
     method: "GET",
@@ -312,6 +354,180 @@ Content-Type: application/json`}</Code>
             sarmalayıcıları değil. Yani <code className="font-mono">include_content</code> ile tam
             metin çıkarılabilir ya da adresler <code className="font-mono">/api/v1/extract</code>
             &apos;e verilebilir.
+          </p>
+        </Section>
+
+        <Section id="data">
+          <h2 className="display text-3xl">Live Data</h2>
+          <p className="mt-4 text-clouda-muted">
+            Arama, &ldquo;dolar kaç lira&rdquo; sorusunun yanlış aracı. Bunu bir arama motoruna
+            soran model, yazıldığı tarihteki kuru içeren bir makale bulur — ve o rakam, güncel
+            bir rakamla aynı güvenle sunulur. Modellerin bayat sayıyı kesin bilgi gibi
+            söylemesinin sebebi tam olarak budur.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            Bu uç nokta sayının kendisini döner, ölçüldüğü zaman damgasıyla. Yedi kaynağın hepsi
+            anahtarsız ve hepsi bu deploy&apos;un kendi çıkış IP&apos;sinden ölçülerek seçildi.
+          </p>
+          <Code>{`POST /api/v1/data
+
+{ "kind": "weather", "place": "İzmir", "days": 3 }
+{ "kind": "fx", "base": "USD", "symbols": ["TRY", "EUR"] }
+{ "kind": "crypto", "ids": ["bitcoin"], "currencies": ["try"] }
+{ "kind": "stock", "symbol": "THYAO.IS" }
+{ "kind": "earthquakes", "min_magnitude": 4, "hours": 24 }
+{ "kind": "country", "name": "Türkiye" }
+{ "kind": "indicator", "country": "TR", "indicator": "inflation", "years": 10 }`}</Code>
+          <Code>{`{
+  "kind": "fx",
+  "source": "frankfurter (ECB referans kurları)",
+  "observed_at": "2026-09-04",
+  "retrieved_at": "2026-09-06T22:31:07.412Z",
+  "cached": true,
+  "cache_age_seconds": 44,
+  "base": "USD",
+  "rates": { "TRY": 48.44, "EUR": 0.8604 },
+  "credits_used": 1
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">İki ayrı zaman damgası.</strong>{" "}
+            <code className="font-mono">retrieved_at</code> bizim ne zaman getirdiğimiz,{" "}
+            <code className="font-mono">observed_at</code> kaynağın değeri ne zaman ölçtüğü. Pazar
+            günü ECB kuru cumanın kurudur; ikisini karıştıran bir çağıran, cumanın rakamını bugünün
+            rakamı diye bildirir. Bu uç nokta tam da bunu önlemek için var.
+          </p>
+        </Section>
+
+        <Section id="map">
+          <h2 className="display text-3xl">Site Map</h2>
+          <p className="mt-4 text-clouda-muted">
+            &ldquo;Şu ürünün dokümantasyonunu oku&rdquo; denen bir ajanın elinde bir adres vardır,
+            diğer üç yüzü lazımdır. Bulmak için taramak yavaş, kaba ve büyük ölçüde gereksiz:
+            sitenin <code className="font-mono">robots.txt</code>&apos;i site haritalarını,
+            haritalar da sayfaları — değişim tarihleriyle birlikte — zaten sayar.
+          </p>
+          <Code>{`POST /api/v1/map
+
+{
+  "url": "docs.python.org",
+  "path": "/library/",     // yalnızca bu yolu içerenler
+  "limit": 200
+}`}</Code>
+          <Code>{`{
+  "site": "https://docs.python.org",
+  "count": 200,
+  "truncated": true,
+  "discovery": {
+    "robots_txt": true,
+    "sitemaps_read": ["https://docs.python.org/sitemap.xml"],
+    "method": "sitemap"
+  },
+  "urls": [
+    { "url": "https://docs.python.org/3/library/asyncio.html",
+      "last_modified": "2026-08-30T00:00:00.000Z", "via": "sitemap" }
+  ],
+  "credits_used": 1
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <code className="font-mono">discovery.method</code> alanına bak:{" "}
+            <code className="font-mono">sitemap</code> sitenin kendi dizini,{" "}
+            <code className="font-mono">links</code> ise site harita yayımlamadığı için ana
+            sayfadan çıkarılan bağlantılardır. İkisi aynı ölçüde eksiksiz değildir. Çıkan adresleri{" "}
+            <code className="font-mono">/api/v1/extract</code>&apos;e verip okuyabilirsin.
+          </p>
+        </Section>
+
+        <Section id="rerank">
+          <h2 className="display text-3xl">Rerank &amp; Chunk</h2>
+          <p className="mt-4 text-clouda-muted">
+            Buradaki her şey bizim gidip getirdiğimiz sayfaları sıralar. Retrieval yapan bir
+            ajanın sorunu tersidir: kendi vektör aramasından çıkmış elli pasajı vardır ve
+            prompt&apos;a girecek beşini seçmesi gerekir. Vektör benzerliği tam bu adımda zayıftır —
+            aynı <em>konu hakkında</em> olan metni bulmak üzere eğitilmiştir, o yüzden belirli bir
+            hata mesajı sorusuna Postgres indeksleri hakkında bir pasaj döndürür.
+          </p>
+          <p className="mt-4 text-clouda-muted">
+            İkisi de ağ kullanmaz, model çağırmaz, sayfa indirmez. Senin zaten elinde olan metnin
+            üzerinde çalışır — bu yüzden milisaniyede döner ve buradaki en ucuz işlemlerdir.
+          </p>
+          <Code>{`POST /api/v1/rerank
+
+{
+  "query": "reindex sırasında yazma kilidi",
+  "documents": [
+    "Rebuilding an index removes the bloat...",
+    { "id": "doc-42", "title": "Autovacuum", "text": "...", "metadata": { "page": 3 } }
+  ],
+  "top_k": 5,
+  "diversity": 0.3        // 0 saf ilgililik, 1 saf çeşitlilik
+}`}</Code>
+          <Code>{`{
+  "scored": 50,
+  "returned": 5,
+  "rank_ms": 4,
+  "results": [
+    { "position": 0, "id": "doc-42", "score": 8.4213, "relative": 1,
+      "matched_terms": ["reindex", "kilit"],
+      "best_passage": "It must be rebuilt concurrently in production, otherwise writes block." }
+  ]
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            <strong className="font-medium text-clouda-ink">diversity</strong> aynı belgeden gelen
+            on pasajın hepsinin cevabı vermesi ama yalnızca birinin prompt&apos;a bir şey katması
+            sorununu çözer. Not: alakasızlık çeşitlilik değildir — hiçbir sorgu terimi içermeyen
+            bir belge, tekrar etmediği için kusursuz bir &ldquo;yenilik&rdquo; skoru alır, ve bu
+            hata canlıda ölçüldü. Sıralama yalnızca gerçekten eşleşen belgeler arasında yapılır.
+          </p>
+          <Code>{`POST /api/v1/chunk
+
+{
+  "text": "# Reindexing\n\nRebuilding an index...",
+  "size": 1200,
+  "overlap": 120,
+  "include_headings": true
+}`}</Code>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Her N karakterde bir kesmek, retrieval&apos;ın kötü olmasının sebebidir: cümleyi ortadan
+            böler, başlığı tanıttığı paragraftan ayırır ve modele neye ait olduğunu bilmeyen bir
+            parça verir. Burada metin kendi yapısına göre bölünür ve her parça üstündeki başlık
+            zincirini taşır — böylece &ldquo;eşzamanlı olarak yeniden inşa edilmeli&rdquo; diyen bir
+            parça, hâlâ &ldquo;Reindexing&rdquo; başlığı altında olduğunu bilir.
+          </p>
+        </Section>
+
+        <Section id="mcp">
+          <h2 className="display text-3xl">MCP sunucusu</h2>
+          <p className="mt-4 text-clouda-muted">
+            REST API, birinin yazdığı kod içindir. Bu, modelin kendisi için: bir MCP istemcisini
+            bir kez bu adrese yönlendirirsin, araç listesini okur, ve model artık web&apos;de
+            aramayı başka herhangi bir aracı çağırdığı gibi çağırır. İstemci kütüphanesi yok,
+            yapıştırma kod yok, parametre adı tahmini yok.
+          </p>
+          <Code>{`{
+  "mcpServers": {
+    "clouda": {
+      "type": "http",
+      "url": "https://clouda-uze1.vercel.app/api/mcp",
+      "headers": { "Authorization": "Bearer cld_live_xxxxxxxx" }
+    }
+  }
+}`}</Code>
+          <p className="mt-4 text-clouda-muted">
+            Sekiz araç: <code className="font-mono">clouda_search</code>,{" "}
+            <code className="font-mono">clouda_news</code>,{" "}
+            <code className="font-mono">clouda_extract</code>,{" "}
+            <code className="font-mono">clouda_answer</code>,{" "}
+            <code className="font-mono">clouda_data</code>,{" "}
+            <code className="font-mono">clouda_map</code>,{" "}
+            <code className="font-mono">clouda_rerank</code>,{" "}
+            <code className="font-mono">clouda_chunk</code>.
+          </p>
+          <p className="mt-4 text-sm text-clouda-muted">
+            Kimlik doğrulama REST ile aynı anahtardır, dolayısıyla anahtarın özellikleri, kredi
+            sınırı ve alan adı politikası curl&apos;den de ajandan da aynı şekilde geçerlidir.
+            Başarısız bir araç çağrısı taşıma katmanı hatası olarak değil,{" "}
+            <code className="font-mono">isError</code> sonucu olarak döner: &ldquo;bu anahtarda
+            citations kapalı&rdquo; bir ajanın etrafından dolaşabileceği bir bilgidir — söylenirse.
           </p>
         </Section>
 

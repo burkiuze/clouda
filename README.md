@@ -139,6 +139,12 @@ sayfa içeriği istenmediğinde 1. Detaylar `/docs` sayfasında.
 | `POST /api/v1/search` | Arama, içerik çıkarımı, kalite skorları |
 | `POST /api/v1/search/batch` | Tek istekte 10 sorguya kadar paralel arama |
 | `POST /api/v1/news` | 22 yayıncı beslemesinden canlı haber; sorgu opsiyonel |
+| `POST /api/v1/data` | Hava, kur, kripto, hisse, deprem, ülke, gösterge — sayı olarak |
+| `POST /api/v1/map` | Bir sitenin bütün adresleri, kendi site haritasından |
+| `POST /api/v1/rerank` | Kendi belgelerini sıralar (BM25 + MMR), ağ kullanmaz |
+| `POST /api/v1/chunk` | Metni başlık yapısını koruyarak parçalara böler |
+| `POST /api/mcp` | MCP sunucusu — sekiz araç, ajan doğrudan bağlanır |
+| `GET /api/v1/openapi` | Makine tarafından okunabilir OpenAPI 3.1 şeması |
 | `POST /api/v1/answer` | Kaynaklı, alıntıya dayalı cevap |
 | `POST /api/v1/extract` | Elindeki adresleri modele hazır metne çevirir |
 | `POST /api/v1/research` | Çok turlu araştırma, kaynaklı rapor |
@@ -191,6 +197,39 @@ dönüşleri tabandır. Bunun yerine iş azaltıldı:
 
 `include_content: false` gönderirsen sayfa hiç indirilmez; hem yaklaşık iki
 kat hızlıdır hem de tam ücret yerine keşif ücreti düşer.
+
+## Güvenilirlik
+
+Fan-out zaten başarısız bir kaynağa dayanıklıydı ama ondan **öğrenmiyordu**: son
+beş çağrısında başarısız olan bir kaynak yine her sorguda soruluyor ve o sorguya
+yine tam süresini ödetiyordu. Artık üst üste dört başarısızlıktan sonra kaynak
+rotasyondan çıkıyor, sonra tek tek deneme istekleriyle geri alınıyor; başarısızlık
+sürdükçe bekleme süresi katlanıyor. Boş yanıt açıkça başarısızlık sayılmıyor —
+sayılsaydı, sıra dışı bir sorgu devreyi açardı.
+
+`/api/health` bu karneyi raporlar: kaynak başına başarı oranı, ortalama gecikme,
+açık devreler. Bu tablo yalnızca o sunucu örneğinin gördüklerini yansıtır ve
+soğuk başlangıçta sıfırlanır — paylaşımlı bir devre kesici, kaynak başına bir
+veritabanı gidiş dönüşü demek olurdu ki kazandırdığından fazlasını götürürdü.
+Kalıcı olan taraf, paylaşımlı ve ayakta kalan sağlayıcı önbelleğidir.
+
+## Test
+
+```bash
+npm test
+```
+
+Ürünün ağ ve veritabanı olmadan test edilebilen tek parçaları sıralama ve
+parçalama modülleri, dolayısıyla gerçek testleri olan tek parçalar onlar. Testler
+karşılığını hemen verdi:
+
+- MMR, indeks şişmesi sorusuna makarna tarifi döndürdü. Hiçbir sorgu terimi
+  içermeyen bir belgenin tekrar edecek bir şeyi yoktur, yani yenilik skoru
+  kusursuz sıfırdır — ve güçlü bir çeşitlilik ağırlığına karşı sıfır, gerçek her
+  adayın cezasını yener. Alakasızlık çeşitlilik değildir.
+- `running` → `runn` olup `run` ile eşleşmiyordu; `address` sondaki s'sini
+  kaybedip `addresses` ile eşleşmiyordu; `queries` → `quer` hiçbir şeyle
+  eşleşmiyordu.
 
 ## Notlar / sonraki adımlar
 
