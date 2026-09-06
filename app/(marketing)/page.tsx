@@ -1,7 +1,7 @@
 import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
 import CodeSnippet from "@/components/CodeSnippet";
-import { CREDITS, NEWS_FEED_COUNT, SEARCH_SOURCE_COUNT } from "@/lib/constants";
+import { CREDITS, NEWS_FEED_COUNT, TOTAL_SOURCE_COUNT } from "@/lib/constants";
 
 const features = [
   {
@@ -24,7 +24,7 @@ const features = [
 const stats = [
   { value: "2.000", label: "her yeni hesaba ücretsiz kredi" },
   { value: `${CREDITS.search} kredi`, label: "arama isteği başına sabit fiyat" },
-  { value: `${SEARCH_SOURCE_COUNT} kaynak`, label: "her sorguda paralel sorgulanır" },
+  { value: `${TOTAL_SOURCE_COUNT} kaynak`, label: "sorunun türüne göre paralel sorgulanır" },
   { value: `${NEWS_FEED_COUNT} yayıncı`, label: "haber derlemi arka planda taze tutulur" },
 ];
 
