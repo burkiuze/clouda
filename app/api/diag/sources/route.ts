@@ -306,9 +306,30 @@ const candidates: Candidate[] = [
     },
   },
   {
-    // Answered nothing for "turkey" even on a fair query, and it is already
-    // wired into /api/v1/data — so the variants are measured rather than
-    // guessed at. The suspicion is the country's rename to Türkiye.
+    // The replacement for REST Countries, whose five spellings all failed.
+    name: "worldbank-country-register",
+    group: "livedata",
+    probe: "-",
+    run: async () => {
+      const d = await json<unknown[]>("https://api.worldbank.org/v2/country?format=json&per_page=400");
+      const rows = Array.isArray(d) && Array.isArray(d[1])
+        ? (d[1] as { name?: string; iso2Code?: string; capitalCity?: string; region?: { id?: string } }[])
+        : [];
+      const countries = rows.filter((r) => r.region?.id && r.region.id !== "NA");
+      const turkey = countries.find((r) => r.iso2Code === "TR");
+      return {
+        count: countries.length,
+        sample: [
+          `${countries.length} ülke (toplam ${rows.length} satır)`,
+          turkey ? `TR: ${turkey.name}, başkent ${turkey.capitalCity}` : "TR bulunamadı",
+        ],
+      };
+    },
+  },
+  {
+    // Answered nothing for "turkey" even on a fair query, and it was already
+    // wired into /api/v1/data — so the variants were measured rather than
+    // guessed at. All five failed; the source is gone from the product.
     name: "restcountries-name-fields",
     group: "livedata",
     probe: "turkey",
