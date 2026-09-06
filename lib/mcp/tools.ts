@@ -6,6 +6,7 @@ import { fetchAndExtract } from "@/lib/search/extract";
 import { matchNews, newsCorpus } from "@/lib/search/newsroom";
 import { rank } from "@/lib/rank/bm25";
 import { chunkText } from "@/lib/rank/chunk";
+import { DATA_KINDS, DataKind, fetchLiveData, INDICATOR_NAMES } from "@/lib/data/live";
 import { verifyClaims } from "@/lib/research/citations";
 
 /**
@@ -380,6 +381,73 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
 ];
+
+MCP_TOOLS.push({
+  name: "clouda_data",
+  description:
+    "Canlı veriyi sayı olarak getirir: hava durumu, döviz kuru, kripto ve hisse fiyatı, " +
+    "deprem, ülke bilgisi, ekonomik gösterge. Bunları aramayla sorma — arama, yazıldığı " +
+    "tarihteki rakamı içeren bir makale döndürür ve o rakam güncel değildir. Yanıt, " +
+    "değerin ölçüldüğü zaman damgasıyla birlikte gelir.",
+  estimate: CREDITS.data,
+  inputSchema: {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: DATA_KINDS, description: "Hangi veri türü." },
+      place: { type: "string", description: "weather için şehir adı." },
+      base: { type: "string", description: "fx için baz para birimi, örn. USD." },
+      symbols: { type: "array", items: { type: "string" }, description: "fx için hedef kurlar." },
+      ids: { type: "array", items: { type: "string" }, description: "crypto için coingecko id'leri." },
+      currencies: { type: "array", items: { type: "string" }, description: "crypto için para birimleri." },
+      symbol: { type: "string", description: "stock için sembol, örn. AAPL, THYAO.IS." },
+      min_magnitude: { type: "number", description: "earthquakes için alt eşik." },
+      hours: { type: "integer", description: "earthquakes için geriye dönük saat." },
+      name: { type: "string", description: "country için ülke adı." },
+      country: { type: "string", description: "indicator için ülke kodu, örn. TR." },
+      indicator: { type: "string", enum: INDICATOR_NAMES, description: "indicator için seri." },
+    },
+    required: ["kind"],
+  },
+  async run(args) {
+    const kind = String(args.kind ?? "") as DataKind;
+    if (!DATA_KINDS.includes(kind)) {
+      throw new CloudaError("invalid_request", `'kind' şunlardan biri olmalı: ${DATA_KINDS.join(", ")}`);
+    }
+
+    const strings = (key: string): string[] | undefined =>
+      Array.isArray(args[key])
+        ? (args[key] as unknown[]).filter((v): v is string => typeof v === "string")
+        : undefined;
+
+    const result = await fetchLiveData({
+      kind,
+      place: str(args, "place", false) || undefined,
+      base: str(args, "base", false) || undefined,
+      symbols: strings("symbols")?.map((s) => s.toUpperCase()),
+      ids: strings("ids"),
+      currencies: strings("currencies"),
+      symbol: str(args, "symbol", false) || undefined,
+      minMagnitude: args.min_magnitude == null ? undefined : Number(args.min_magnitude),
+      hours: args.hours == null ? undefined : num(args, "hours", 24, 1, 168),
+      name: str(args, "name", false) || undefined,
+      countryCode: str(args, "country", false) || undefined,
+      indicator: str(args, "indicator", false) || undefined,
+    });
+
+    // The timestamps lead, because they are the point: a model that cannot see
+    // how old a number is will state a stale one as current.
+    const header =
+      `${result.kind} — kaynak: ${result.source}\n` +
+      `ölçüm zamanı: ${result.observedAt ?? "kaynak belirtmiyor"}\n` +
+      `getirilme zamanı: ${result.retrievedAt}` +
+      (result.ageSeconds != null ? ` (önbellekten, ${result.ageSeconds} sn önce)` : "");
+
+    return {
+      text: `${header}\n\n${JSON.stringify(result.data, null, 2)}`,
+      credits: CREDITS.data,
+    };
+  },
+});
 
 export function findTool(name: string): McpTool | undefined {
   return MCP_TOOLS.find((tool) => tool.name === name);

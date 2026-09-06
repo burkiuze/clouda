@@ -74,6 +74,12 @@ export const CREDITS = {
    */
   rerank: 1,
   chunk: 1,
+  /**
+   * A live-data lookup is one small JSON call to one source, usually answered
+   * from a shared cache, with nothing extracted and nothing ranked. It is the
+   * cheapest network operation here and priced accordingly.
+   */
+  data: 1,
 } as const;
 
 /**
