@@ -17,6 +17,14 @@ const TOKEN = process.env.DIAG_TOKEN ?? "probe_c71b9de4a3";
 interface Candidate {
   name: string;
   group: string;
+  /**
+   * A query this source can plausibly answer. Three candidates were recorded
+   * as failures in the first pass because they were all asked "postgres
+   * index" — there is no city called Postgres and no country called Postgres,
+   * so a geocoder and a country database answering nothing were right, and
+   * the measurement was wrong. A source is only judged on a fair question.
+   */
+  probe?: string;
   run: (q: string) => Promise<{ count: number; sample: string[] }>;
 }
 
@@ -39,6 +47,7 @@ const candidates: Candidate[] = [
   {
     name: "wikidata",
     group: "reference",
+    probe: "postgresql",
     run: async (q) => {
       const d = await json<{ search?: { label?: string; description?: string }[] }>(
         `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${enc(q)}&language=en&format=json&limit=5&origin=*`
@@ -84,7 +93,10 @@ const candidates: Candidate[] = [
     name: "arxiv",
     group: "academic",
     run: async (q) => {
-      const body = await text(`https://export.arxiv.org/api/query?search_query=all:${enc(q)}&max_results=5`);
+      const body = await text(
+        `https://export.arxiv.org/api/query?search_query=all:${enc(q)}&max_results=5`,
+        15_000
+      );
       const titles = [...body.matchAll(/<entry>[\s\S]*?<title>([\s\S]*?)<\/title>/g)].map((m) =>
         m[1].replace(/\s+/g, " ").trim()
       );
@@ -94,6 +106,7 @@ const candidates: Candidate[] = [
   {
     name: "europepmc",
     group: "academic",
+    probe: "crispr gene editing",
     run: async (q) => {
       const d = await json<{ resultList?: { result?: { title?: string; pubYear?: string }[] } }>(
         `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${enc(q)}&format=json&pageSize=5`
@@ -127,6 +140,7 @@ const candidates: Candidate[] = [
   {
     name: "doaj",
     group: "academic",
+    probe: "machine learning",
     run: async (q) => {
       const d = await json<{ results?: { bibjson?: { title?: string } }[] }>(
         `https://doaj.org/api/search/articles/${enc(q)}?pageSize=5`
@@ -186,7 +200,8 @@ const candidates: Candidate[] = [
     group: "packages",
     run: async (q) => {
       const d = await json<{ response?: { docs?: { a?: string; g?: string }[] } }>(
-        `https://search.maven.org/solrsearch/select?q=${enc(q)}&rows=5&wt=json`
+        `https://search.maven.org/solrsearch/select?q=${enc(q)}&rows=5&wt=json`,
+        15_000
       );
       const h = d.response?.docs ?? [];
       return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.g}:${x.a}`) };
@@ -206,6 +221,7 @@ const candidates: Candidate[] = [
   {
     name: "open-meteo-geocode",
     group: "livedata",
+    probe: "istanbul",
     run: async (q) => {
       const d = await json<{ results?: { name?: string; country?: string; latitude?: number }[] }>(
         `https://geocoding-api.open-meteo.com/v1/search?name=${enc(q)}&count=3&language=tr`
@@ -292,6 +308,7 @@ const candidates: Candidate[] = [
   {
     name: "restcountries",
     group: "livedata",
+    probe: "turkey",
     run: async (q) => {
       const d = await json<{ name?: { common?: string }; population?: number }[]>(
         `https://restcountries.com/v3.1/name/${enc(q.split(" ")[0])}?fields=name,population`
@@ -329,6 +346,7 @@ const candidates: Candidate[] = [
   {
     name: "mdn",
     group: "docs",
+    probe: "fetch api",
     run: async (q) => {
       const d = await json<{ documents?: { title?: string; mdn_url?: string }[] }>(
         `https://developer.mozilla.org/api/v1/search?q=${enc(q)}&locale=en-US`
@@ -366,13 +384,23 @@ export async function GET(req: NextRequest) {
   const results = await Promise.all(
     candidates.map(async (c) => {
       const started = Date.now();
+      const asked = c.probe ?? query;
       try {
-        const { count, sample } = await c.run(query);
-        return { name: c.name, group: c.group, ok: count > 0, count, ms: Date.now() - started, sample };
+        const { count, sample } = await c.run(asked);
+        return {
+          name: c.name,
+          group: c.group,
+          asked,
+          ok: count > 0,
+          count,
+          ms: Date.now() - started,
+          sample,
+        };
       } catch (err) {
         return {
           name: c.name,
           group: c.group,
+          asked,
           ok: false,
           count: 0,
           ms: Date.now() - started,
