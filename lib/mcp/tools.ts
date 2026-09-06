@@ -7,6 +7,7 @@ import { matchNews, newsCorpus } from "@/lib/search/newsroom";
 import { rank } from "@/lib/rank/bm25";
 import { chunkText } from "@/lib/rank/chunk";
 import { DATA_KINDS, DataKind, fetchLiveData, INDICATOR_NAMES } from "@/lib/data/live";
+import { mapSite } from "@/lib/crawl/sitemap";
 import { verifyClaims } from "@/lib/research/citations";
 
 /**
@@ -445,6 +446,47 @@ MCP_TOOLS.push({
     return {
       text: `${header}\n\n${JSON.stringify(result.data, null, 2)}`,
       credits: CREDITS.data,
+    };
+  },
+});
+
+MCP_TOOLS.push({
+  name: "clouda_map",
+  description:
+    "Bir sitenin yayımladığı bütün adresleri, sitenin kendi site haritasından çıkarır. " +
+    "Bir dokümantasyonu baştan sona okuman gerektiğinde önce bunu çağır, sonra çıkan " +
+    "adresleri clouda_extract'e ver. Taramaya göre çok daha hızlı ve siteye çok daha kibar.",
+  estimate: CREDITS.map,
+  inputSchema: {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "Site adresi ya da alan adı." },
+      path: { type: "string", description: "Yalnızca bu yolu içeren adresler, örn. /docs/." },
+      limit: { type: "integer", minimum: 1, maximum: 1000 },
+    },
+    required: ["url"],
+  },
+  async run(args, ctx) {
+    const result = await mapSite(str(args, "url"), {
+      limit: num(args, "limit", 100, 1, 1000),
+      pathPrefix: str(args, "path", false) || undefined,
+      policy: ctx.policy,
+    });
+
+    if (result.urls.length === 0) {
+      return { text: `${result.site} için site haritası bulunamadı.`, credits: CREDITS.map };
+    }
+
+    const header =
+      `${result.site} — ${result.urls.length} adres ` +
+      `(${result.urls[0].via === "sitemap" ? "site haritasından" : "ana sayfa bağlantılarından"})` +
+      (result.truncated ? ", liste kesildi" : "");
+
+    return {
+      text: `${header}\n\n${result.urls
+        .map((u) => (u.lastModified ? `${u.url}  [${u.lastModified.slice(0, 10)}]` : u.url))
+        .join("\n")}`,
+      credits: CREDITS.map,
     };
   },
 });

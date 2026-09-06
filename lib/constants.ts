@@ -80,6 +80,12 @@ export const CREDITS = {
    * cheapest network operation here and priced accordingly.
    */
   data: 1,
+  /**
+   * Mapping a site reads its own index — one or two requests where a crawl
+   * would be hundreds — so it is priced like a single fetch however many URLs
+   * come back.
+   */
+  map: 1,
 } as const;
 
 /**
