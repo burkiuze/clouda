@@ -306,15 +306,68 @@ const candidates: Candidate[] = [
     },
   },
   {
-    name: "restcountries",
+    // Answered nothing for "turkey" even on a fair query, and it is already
+    // wired into /api/v1/data — so the variants are measured rather than
+    // guessed at. The suspicion is the country's rename to Türkiye.
+    name: "restcountries-name-fields",
     group: "livedata",
     probe: "turkey",
     run: async (q) => {
       const d = await json<{ name?: { common?: string }; population?: number }[]>(
-        `https://restcountries.com/v3.1/name/${enc(q.split(" ")[0])}?fields=name,population`
+        `https://restcountries.com/v3.1/name/${enc(q)}?fields=name,population`
       );
       const h = Array.isArray(d) ? d : [];
       return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.name?.common}: ${x.population}`) };
+    },
+  },
+  {
+    name: "restcountries-name-plain",
+    group: "livedata",
+    probe: "turkey",
+    run: async (q) => {
+      const d = await json<{ name?: { common?: string }; population?: number }[]>(
+        `https://restcountries.com/v3.1/name/${enc(q)}`
+      );
+      const h = Array.isArray(d) ? d : [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.name?.common}: ${x.population}`) };
+    },
+  },
+  {
+    name: "restcountries-turkiye",
+    group: "livedata",
+    probe: "türkiye",
+    run: async (q) => {
+      const d = await json<{ name?: { common?: string }; population?: number }[]>(
+        `https://restcountries.com/v3.1/name/${enc(q)}?fields=name,population`
+      );
+      const h = Array.isArray(d) ? d : [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.name?.common}: ${x.population}`) };
+    },
+  },
+  {
+    name: "restcountries-germany",
+    group: "livedata",
+    probe: "germany",
+    run: async (q) => {
+      const d = await json<{ name?: { common?: string }; population?: number }[]>(
+        `https://restcountries.com/v3.1/name/${enc(q)}?fields=name,population,capital`
+      );
+      const h = Array.isArray(d) ? d : [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.name?.common}: ${x.population}`) };
+    },
+  },
+  {
+    // The alternative, if name lookup is the broken part: a country's own
+    // translations are indexed separately.
+    name: "restcountries-translation",
+    group: "livedata",
+    probe: "turkey",
+    run: async (q) => {
+      const d = await json<{ name?: { common?: string } }[]>(
+        `https://restcountries.com/v3.1/translation/${enc(q)}`
+      );
+      const h = Array.isArray(d) ? d : [];
+      return { count: h.length, sample: h.slice(0, 3).map((x) => `${x.name?.common}`) };
     },
   },
 

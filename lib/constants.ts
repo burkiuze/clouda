@@ -90,7 +90,18 @@ export const CREDITS = {
  * pull the whole scraping stack into the build. Keep the two in step — the
  * site claimed eight while the array held seven.
  */
-export const SEARCH_SOURCE_COUNT = 8;
+export const SEARCH_SOURCE_COUNT = 9;
+
+/**
+ * Distinct third-party endpoints a query can reach across every intent.
+ *
+ * Larger than SEARCH_SOURCE_COUNT because two of the sources are themselves
+ * groups: "packages" asks five registries and "scholar" asks three indexes,
+ * merged before they reach the fan-out so five registries cost one slot in it.
+ * Counted honestly: nine general sources, plus OpenAlex, MDN and SEC full-text
+ * search, plus those eight grouped ones.
+ */
+export const TOTAL_SOURCE_COUNT = 20;
 
 /**
  * Publisher feeds behind the "newsroom" source, mirrored from FEEDS in

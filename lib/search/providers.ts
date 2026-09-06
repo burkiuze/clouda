@@ -64,6 +64,17 @@ async function getJson<T>(url: string, init?: RequestInit, timeoutMs = PROVIDER_
   }
 }
 
+/** Same contract as getJson, for sources that answer in XML rather than JSON. */
+async function getText(url: string, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT): Promise<string | null> {
+  try {
+    const res = await safeFetch(url, { ...init, trusted: true, timeoutMs });
+    if (res.status >= 400) return null;
+    return res.body;
+  } catch {
+    return null;
+  }
+}
+
 /** Strips the highlight markup search APIs wrap matched terms in. */
 function plain(text: string | undefined): string {
   return (text ?? "").replace(/<[^>]+>/g, "").replace(/&hellip;/g, "…").replace(/\s+/g, " ").trim();
@@ -345,29 +356,6 @@ function invertedAbstract(index: Record<string, number[]> | undefined): string {
   return words.filter(Boolean).join(" ");
 }
 
-const npm: Provider = {
-  tier: "vertical",
-  name: "npm",
-  available: () => true,
-  async search(query, limit) {
-    const data = await getJson<{
-      objects?: {
-        package?: { name?: string; description?: string; links?: { npm?: string }; date?: string };
-      }[];
-    }>(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${limit}`);
-
-    return (data?.objects ?? [])
-      .map((o) => o.package)
-      .filter((p): p is NonNullable<typeof p> => Boolean(p?.name))
-      .slice(0, limit)
-      .map((p) => ({
-        title: p.name as string,
-        url: p.links?.npm ?? `https://www.npmjs.com/package/${p.name}`,
-        snippet: p.description ?? "",
-        publishedAt: p.date ?? null,
-      }));
-  },
-};
 
 const googleNews: Provider = {
   tier: "vertical",
@@ -423,18 +411,407 @@ const newsroom: Provider = {
   },
 };
 
+/* ------------------------------------------------- structured reference */
+
+/**
+ * Wikidata: the entity, not an article about the entity.
+ *
+ * Measured at 327ms with exactly the answer a definitional question wants —
+ * "PostgreSQL: free and open-source relational database management system".
+ * Wikipedia gives the prose; this gives the one-line identity, which is often
+ * the whole answer and is never buried in it.
+ */
+const wikidata: Provider = {
+  tier: "vertical",
+  name: "wikidata",
+  available: () => true,
+  async search(query, limit, locale) {
+    const lang = locale.split("-")[0] || "en";
+    const data = await getJson<{
+      search?: { id?: string; label?: string; description?: string; concepturi?: string }[];
+    }>(
+      `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json` +
+        `&search=${encodeURIComponent(query)}&language=${lang}&uselang=${lang}&limit=${Math.min(limit, 20)}`,
+      { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
+    );
+
+    return (data?.search ?? [])
+      .filter((hit) => hit.label && (hit.concepturi || hit.id))
+      .map((hit) => ({
+        title: hit.label as string,
+        url: hit.concepturi ?? `https://www.wikidata.org/wiki/${hit.id}`,
+        snippet: hit.description ?? "",
+        publishedAt: null,
+      }));
+  },
+};
+
+/* ------------------------------------------------------------------ docs */
+
+/**
+ * MDN, for web-platform questions. Measured at 307ms, and it answers the kind
+ * of question — "how does fetch handle redirects" — that a general index
+ * answers with a blog post copied from MDN three years ago.
+ */
+const mdn: Provider = {
+  tier: "vertical",
+  name: "mdn",
+  available: () => true,
+  async search(query, limit) {
+    const data = await getJson<{
+      documents?: { title?: string; mdn_url?: string; summary?: string }[];
+    }>(
+      `https://developer.mozilla.org/api/v1/search?q=${encodeURIComponent(query)}&locale=en-US`
+    );
+
+    return (data?.documents ?? [])
+      .filter((doc) => doc.title && doc.mdn_url)
+      .slice(0, limit)
+      .map((doc) => ({
+        title: doc.title as string,
+        url: `https://developer.mozilla.org${doc.mdn_url}`,
+        snippet: doc.summary ?? "",
+        publishedAt: null,
+      }));
+  },
+};
+
+/* -------------------------------------------------------------- packages */
+
+/**
+ * Five package registries behind one source.
+ *
+ * They are grouped rather than listed separately on purpose. Each registry is
+ * a small, fast, keyless API, but the fan-out is bounded by its slowest member
+ * and every extra entry in it is another deadline the whole query can wait on.
+ * Asked together and merged here, five registries cost the fan-out one slot.
+ *
+ * Which ones get asked depends on the query: "rust http client" has no
+ * business waiting on RubyGems. When the query names no ecosystem, all five
+ * are asked, because guessing wrong is worse than asking.
+ */
+interface Registry {
+  name: string;
+  /** Words that make this registry the obvious one to ask. */
+  hints: RegExp;
+  search(query: string, limit: number): Promise<RawResult[]>;
+}
+
+const REGISTRIES: Registry[] = [
+  {
+    name: "npm",
+    hints: /\b(npm|node|nodejs|javascript|js|typescript|ts|react|vue|angular|svelte|deno|bun)\b/i,
+    async search(query, limit) {
+      const data = await getJson<{
+        objects?: {
+          package?: { name?: string; description?: string; links?: { npm?: string }; date?: string };
+        }[];
+      }>(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(query)}&size=${limit}`);
+
+      return (data?.objects ?? [])
+        .map((o) => o.package)
+        .filter((pkg): pkg is NonNullable<typeof pkg> => Boolean(pkg?.name))
+        .map((pkg) => ({
+          title: `npm: ${pkg.name}`,
+          url: pkg.links?.npm ?? `https://www.npmjs.com/package/${pkg.name}`,
+          snippet: pkg.description ?? "",
+          publishedAt: pkg.date ?? null,
+        }));
+    },
+  },
+  {
+    name: "crates",
+    hints: /\b(rust|cargo|crate|crates|tokio|serde)\b/i,
+    async search(query, limit) {
+      const data = await getJson<{
+        crates?: { name?: string; description?: string; updated_at?: string }[];
+      }>(
+        `https://crates.io/api/v1/crates?q=${encodeURIComponent(query)}&per_page=${limit}`,
+        { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
+      );
+
+      return (data?.crates ?? [])
+        .filter((crate) => crate.name)
+        .map((crate) => ({
+          title: `crates.io: ${crate.name}`,
+          url: `https://crates.io/crates/${crate.name}`,
+          snippet: crate.description ?? "",
+          publishedAt: crate.updated_at ?? null,
+        }));
+    },
+  },
+  {
+    name: "packagist",
+    hints: /\b(php|composer|laravel|symfony|packagist)\b/i,
+    async search(query, limit) {
+      const data = await getJson<{
+        results?: { name?: string; description?: string; url?: string }[];
+      }>(`https://packagist.org/search.json?q=${encodeURIComponent(query)}&per_page=${limit}`);
+
+      return (data?.results ?? [])
+        .filter((pkg) => pkg.name)
+        .map((pkg) => ({
+          title: `packagist: ${pkg.name}`,
+          url: pkg.url ?? `https://packagist.org/packages/${pkg.name}`,
+          snippet: pkg.description ?? "",
+          publishedAt: null,
+        }));
+    },
+  },
+  {
+    name: "nuget",
+    hints: /\b(c#|csharp|dotnet|\.net|nuget|asp\.net|blazor)\b/i,
+    async search(query, limit) {
+      const data = await getJson<{
+        data?: { id?: string; description?: string; projectUrl?: string; version?: string }[];
+      }>(
+        `https://azuresearch-usnc.nuget.org/query?q=${encodeURIComponent(query)}&take=${limit}`
+      );
+
+      return (data?.data ?? [])
+        .filter((pkg) => pkg.id)
+        .map((pkg) => ({
+          title: `NuGet: ${pkg.id}`,
+          url: `https://www.nuget.org/packages/${pkg.id}`,
+          snippet: pkg.description ?? "",
+          publishedAt: null,
+        }));
+    },
+  },
+  {
+    name: "rubygems",
+    hints: /\b(ruby|rails|gem|gems|rubygems|sinatra)\b/i,
+    async search(query, limit) {
+      const data = await getJson<
+        { name?: string; info?: string; project_uri?: string; version_created_at?: string }[]
+      >(`https://rubygems.org/api/v1/search.json?query=${encodeURIComponent(query)}`);
+
+      return (Array.isArray(data) ? data : [])
+        .filter((gem) => gem.name)
+        .slice(0, limit)
+        .map((gem) => ({
+          title: `gem: ${gem.name}`,
+          url: gem.project_uri ?? `https://rubygems.org/gems/${gem.name}`,
+          snippet: gem.info ?? "",
+          publishedAt: gem.version_created_at ?? null,
+        }));
+    },
+  },
+];
+
+const packages: Provider = {
+  tier: "vertical",
+  name: "packages",
+  available: () => true,
+  async search(query, limit) {
+    const named = REGISTRIES.filter((registry) => registry.hints.test(query));
+    const asked = named.length > 0 ? named : REGISTRIES;
+
+    // One registry failing must not lose the others: they are independent
+    // answers to the same question, not steps in a sequence.
+    const lists = await Promise.all(
+      asked.map((registry) =>
+        registry.search(query, Math.max(3, Math.ceil(limit / asked.length))).catch(() => [])
+      )
+    );
+
+    // Interleaved rather than concatenated, so the merged list is not simply
+    // the first registry's results followed by everyone else's.
+    const merged: RawResult[] = [];
+    for (let rank = 0; merged.length < limit; rank++) {
+      const before = merged.length;
+      for (const list of lists) {
+        if (list[rank]) merged.push(list[rank]);
+        if (merged.length >= limit) break;
+      }
+      if (merged.length === before) break;
+    }
+    return merged;
+  },
+};
+
+/* -------------------------------------------------------------- scholar */
+
+/**
+ * Three academic indexes behind one source, grouped for the same reason as the
+ * registries. OpenAlex stays separate because it is broad enough to stand on
+ * its own; these three each cover a slice OpenAlex covers thinly — arXiv the
+ * preprints, Europe PMC the biomedical literature, DOAJ the open-access
+ * journals.
+ *
+ * arXiv is here despite timing out at six seconds in the first measurement. It
+ * answered the identical query in 87ms on the retry, so the timeout was a bad
+ * minute rather than a property of the source — and the fan-out is built to
+ * survive exactly that.
+ */
+const scholar: Provider = {
+  tier: "vertical",
+  name: "scholar",
+  available: () => true,
+  async search(query, limit) {
+    const per = Math.max(3, Math.ceil(limit / 3));
+
+    const arxiv = async (): Promise<RawResult[]> => {
+      const body = await getText(
+        `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&max_results=${per}`
+      );
+      if (!body) return [];
+
+      return [...body.matchAll(/<entry>([\s\S]*?)<\/entry>/g)]
+        .map((match) => {
+          const entry = match[1];
+          const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1]?.replace(/\s+/g, " ").trim();
+          const id = entry.match(/<id>([\s\S]*?)<\/id>/)?.[1]?.trim();
+          const summary = entry.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]?.replace(/\s+/g, " ").trim();
+          const published = entry.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim();
+          if (!title || !id) return null;
+          const result: RawResult = {
+            title: `arXiv: ${title}`,
+            url: id,
+            snippet: (summary ?? "").slice(0, 300),
+            publishedAt: published ?? null,
+          };
+          return result;
+        })
+        .filter((r): r is RawResult => r !== null);
+    };
+
+    const europepmc = async (): Promise<RawResult[]> => {
+      const data = await getJson<{
+        resultList?: {
+          result?: { title?: string; doi?: string; id?: string; source?: string; firstPublicationDate?: string; abstractText?: string }[];
+        };
+      }>(
+        `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}` +
+          `&format=json&pageSize=${per}`
+      );
+
+      return (data?.resultList?.result ?? [])
+        .filter((work) => work.title)
+        .map((work) => ({
+          title: work.title as string,
+          url: work.doi
+            ? `https://doi.org/${work.doi}`
+            : `https://europepmc.org/article/${work.source ?? "MED"}/${work.id ?? ""}`,
+          snippet: (work.abstractText ?? "").replace(/<[^>]+>/g, "").slice(0, 300),
+          publishedAt: work.firstPublicationDate ?? null,
+        }));
+    };
+
+    const doaj = async (): Promise<RawResult[]> => {
+      const data = await getJson<{
+        results?: {
+          bibjson?: {
+            title?: string;
+            abstract?: string;
+            year?: string;
+            link?: { url?: string; type?: string }[];
+            identifier?: { id?: string; type?: string }[];
+          };
+        }[];
+      }>(`https://doaj.org/api/search/articles/${encodeURIComponent(query)}?pageSize=${per}`);
+
+      return (data?.results ?? [])
+        .map((entry) => entry.bibjson)
+        .filter((work): work is NonNullable<typeof work> => Boolean(work?.title))
+        .map((work) => {
+          const doi = work.identifier?.find((i) => i.type === "doi")?.id;
+          const link = work.link?.find((l) => l.type === "fulltext")?.url ?? work.link?.[0]?.url;
+          return {
+            title: work.title as string,
+            url: doi ? `https://doi.org/${doi}` : (link ?? ""),
+            snippet: (work.abstract ?? "").slice(0, 300),
+            publishedAt: work.year ? `${work.year}-01-01` : null,
+          };
+        })
+        .filter((r) => r.url);
+    };
+
+    const lists = await Promise.all([
+      arxiv().catch(() => []),
+      europepmc().catch(() => []),
+      doaj().catch(() => []),
+    ]);
+
+    const merged: RawResult[] = [];
+    for (let rank = 0; merged.length < limit; rank++) {
+      const before = merged.length;
+      for (const list of lists) {
+        if (list[rank]) merged.push(list[rank]);
+        if (merged.length >= limit) break;
+      }
+      if (merged.length === before) break;
+    }
+    return merged;
+  },
+};
+
+/* --------------------------------------------------------------- filings */
+
+/**
+ * SEC full-text search over company filings. A question about what a listed
+ * company actually said about something is answered by the filing, not by
+ * coverage of the filing.
+ */
+const secFilings: Provider = {
+  tier: "vertical",
+  name: "sec-filings",
+  available: () => true,
+  async search(query, limit) {
+    const data = await getJson<{
+      hits?: {
+        hits?: {
+          _id?: string;
+          _source?: { display_names?: string[]; file_type?: string; file_date?: string; adsh?: string; ciks?: string[] };
+        }[];
+      };
+    }>(
+      `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(`"${query}"`)}&hits=${limit}`,
+      { headers: { "User-Agent": "Clouda research contact@clouda.dev" } }
+    );
+
+    return (data?.hits?.hits ?? [])
+      .slice(0, limit)
+      .map((hit) => {
+        const source = hit._source;
+        const cik = source?.ciks?.[0]?.replace(/^0+/, "");
+        const [accession, document] = (hit._id ?? "").split(":");
+        const company = source?.display_names?.[0] ?? "SEC filing";
+
+        return {
+          title: `${company} — ${source?.file_type ?? "filing"}`,
+          url:
+            cik && accession
+              ? `https://www.sec.gov/Archives/edgar/data/${cik}/${accession.replace(/-/g, "")}/${document ?? ""}`
+              : "https://www.sec.gov/edgar/search/",
+          snippet: `${source?.file_type ?? ""} ${source?.file_date ?? ""}`.trim(),
+          publishedAt: source?.file_date ?? null,
+        };
+      })
+      .filter((r) => r.url);
+  },
+};
+
 export const OPEN_PROVIDERS: Provider[] = [
   newsroom,
   marginalia,
   mwmbl,
   wikipedia,
+  wikidata,
   stackexchange,
   github,
   hackernews,
   googleNews,
 ];
 
-export const ALL_PROVIDERS = [...OPEN_PROVIDERS, openalex, npm];
+export const ALL_PROVIDERS = [
+  ...OPEN_PROVIDERS,
+  openalex,
+  scholar,
+  packages,
+  mdn,
+  secFilings,
+];
 
 export { newsroom };
 
@@ -449,14 +826,18 @@ export { newsroom };
 export function openProvidersForIntent(intent: string): Provider[] {
   switch (intent) {
     case "news":
+      return [newsroom, marginalia, mwmbl, googleNews, wikipedia, wikidata];
     case "finance":
-      return [newsroom, marginalia, mwmbl, googleNews, wikipedia];
+      // Filings say what a company actually stated; coverage says what someone
+      // wrote about what it stated. Both are useful, and they are not the same
+      // claim, so both are asked.
+      return [newsroom, marginalia, mwmbl, googleNews, secFilings, wikidata];
     case "academic":
-      return [marginalia, mwmbl, openalex, wikipedia];
+      return [marginalia, mwmbl, openalex, scholar, wikipedia, wikidata];
     case "technical":
-      return [marginalia, mwmbl, stackexchange, github, hackernews, npm];
+      return [marginalia, mwmbl, stackexchange, github, hackernews, packages, mdn];
     case "product":
-      return [newsroom, marginalia, mwmbl, googleNews, hackernews, wikipedia];
+      return [newsroom, marginalia, mwmbl, googleNews, hackernews, packages, wikipedia];
     default:
       return OPEN_PROVIDERS;
   }
