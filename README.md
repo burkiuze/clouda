@@ -124,6 +124,27 @@ curl http://localhost:3000/api/v1/search \
 | `mode: "sources"` | İçerik indirmeden kaynak biçiminde yanıt verir. |
 | `mode: "claims"` | Sonuçlardan iddia çıkarır ve kaynaklarla eşler. |
 
+### Sorguya link koyabilirsin
+
+Bir adres yapıştırdığında onu aramaz, **okur**. Sayfa getirilir, metni çıkarılır
+ve sonuçların başına konur.
+
+```bash
+# Yalnızca link: arama yapılmaz, sadece o sayfa okunur.
+-d '{"query":"https://docs.python.org/3/library/asyncio.html"}'
+
+# Link + soru: hem sayfa okunur hem soru aranır, sayfa başa gelir.
+-d '{"query":"https://example.com/post bu ne diyor"}'
+```
+
+Şemasız adresler de tanınır (`wikipedia.org`, `www.bbc.co.uk/news`), ama yalnızca
+insanların gerçekten girdiği uzantılarda — `node.js` ve `package.json` arama
+terimi olarak kalır, çünkü yanlış tahmin aramayı başarısız bir indirmeye çevirir.
+
+Okunamayan bir adres yine de sonuçlarda görünür, sebebiyle birlikte: yapıştırılan
+bir linki sessizce düşürmek, aracın kullanıcıyı yok sayması gibi görünür. Adresler
+her uçtaki SSRF kontrollerinden geçer — özel ağ adresleri reddedilir.
+
 Tarihi bilinmeyen bir sonuç güncel olduğu iddiasıyla etiketlenmez; tarih alanı
 `null` kalır. `degraded_providers`, yanıt vermeyen veya son kayıtlı yanıtıyla
 kullanılan kaynakları açıklar. Tam şema `/api/v1/openapi` ve `/docs` adreslerinde.

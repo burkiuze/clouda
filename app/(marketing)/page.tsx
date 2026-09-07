@@ -51,7 +51,9 @@ export default function Home() {
 
           <p className="mt-4 text-sm text-clouda-muted">
             Bu kutu, çalışan kurulumunun kendi arama motorunu kullanıyor —{" "}
-            {TOTAL_SOURCE_COUNT} kaynak, sorunun türüne göre paralel sorgulanır.
+            {TOTAL_SOURCE_COUNT} kaynak, sorunun türüne göre paralel sorgulanır. Bir{" "}
+            <strong className="font-medium text-clouda-ink">link yapıştırırsan</strong> onu
+            aramaz, okur.
           </p>
         </div>
       </section>

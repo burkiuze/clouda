@@ -176,6 +176,35 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // A pasted link must be read, not searched for. Only answerable against the
+  // real internet: the page has to actually come back.
+  checks.push(
+    await check("search:url", async () => {
+      const url = "https://en.wikipedia.org/wiki/Database_index";
+      const result = await searchWeb(url, { maxResults: 3 });
+      expect(result.results.length > 0, "sonuç yok");
+      expect(result.results[0].url === url, `ilk sonuç ${result.results[0].url}`);
+      expect(result.results[0].content.length > 200, "sayfa metni çıkarılmadı");
+      expect(result.plan.urlsOnly === true, "urlsOnly işaretlenmedi");
+      return `${result.results[0].title} · ${result.results[0].content.length} karakter, ${result.tookMs}ms`;
+    })
+  );
+
+  checks.push(
+    await check("search:url+soru", async () => {
+      const result = await searchWeb(
+        "https://en.wikipedia.org/wiki/Database_index nedir bu index",
+        { maxResults: 5 }
+      );
+      expect(result.plan.urls.length === 1, "adres ayrıştırılmadı");
+      expect(result.plan.urlsOnly === false, "soru kısmı yok sayıldı");
+      const pasted = result.results.findIndex((r) => r.url.includes("Database_index"));
+      expect(pasted === 0, `yapıştırılan link ${pasted}. sırada`);
+      expect(result.results.length > 1, "yalnızca link döndü, arama yapılmadı");
+      return `${result.results.length} sonuç, ilki link, kaynak: ${result.provider}`;
+    })
+  );
+
   checks.push(
     await check("newsroom", async () => {
       const corpus = await newsCorpus({ blocking: true });

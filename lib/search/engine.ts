@@ -423,6 +423,62 @@ function startPage(url: string, options: SearchOptions, remaining: number): Page
   return { promise, controller };
 }
 
+type EnrichedPage = { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null };
+
+/**
+ * Fetches the addresses the caller put in the query.
+ *
+ * These are not candidates competing for a place in the results — the caller
+ * named them, so they lead the list whatever the ranking would have said. A
+ * page that cannot be read still appears, carrying the reason: silently
+ * dropping a link someone pasted looks like the tool ignored them.
+ */
+async function fetchRequested(
+  urls: string[],
+  options: SearchOptions,
+  started: number,
+  profile: { enrichMs: number }
+): Promise<EnrichedPage[]> {
+  const remaining = Math.max(1000, started + profile.enrichMs - Date.now());
+
+  const pages = await Promise.all(
+    urls.map(async (url) => {
+      // The same SSRF checks as everywhere else: this is caller-supplied input
+      // pointed straight at our own fetcher.
+      if (!isUrlAllowed(url, extractionPolicy(options))) return null;
+
+      const page = await fetchAndExtract(url, {
+        policy: extractionPolicy(options),
+        timeoutMs: Math.min(PAGE_TIMEOUT_MS * 2, remaining),
+      }).catch(() => null);
+
+      const host = (() => {
+        try {
+          return new URL(url).hostname.replace(/^www\./, "");
+        } catch {
+          return url;
+        }
+      })();
+
+      const raw: RawResult = {
+        title: page?.title || host,
+        url,
+        snippet: page?.content?.slice(0, 300) ?? "Bu adres okunamadı.",
+        publishedAt: page?.publishedAt ?? undefined,
+      };
+
+      return {
+        raw,
+        content: options.includeContent === false ? "" : (page?.content ?? ""),
+        updatedAt: page?.updatedAt ?? null,
+        publishedAt: page?.publishedAt ?? null,
+      };
+    })
+  );
+
+  return pages.filter((page): page is EnrichedPage => page !== null);
+}
+
 async function enrich(
   results: RawResult[], options: SearchOptions, deadline: number, inFlightPages: Map<string, PageWork>
 ): Promise<{ raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[]> {
@@ -553,13 +609,25 @@ async function executeSearch(
     }
   };
 
+  // A link in the query is fetched directly, in parallel with the fan-out.
+  //
+  // Searching for a URL the caller already has is answering a question they
+  // did not ask: the page is right there. When the query was nothing but
+  // links, discovery is skipped entirely — there is nothing left to search
+  // for, and asking nine sources about a bare URL returns noise.
+  const requested = plan.urls.length > 0 ? fetchRequested(plan.urls, options, started, profile) : null;
+
+  const discovered = plan.urlsOnly
+    ? { results: [], provider: "url", degraded: [], providersQueried: 0, providersWithResults: 0 }
+    : await discover(plan, candidateCount, locale, freshnessHours, options, startPrefetch);
+
   const {
     results: candidates,
     provider,
     degraded,
     providersQueried,
     providersWithResults,
-  } = await discover(plan, candidateCount, locale, freshnessHours, options, startPrefetch);
+  } = discovered;
 
   const diagnostics = (results: RawResult[]) => ({ depth, providersQueried, providersWithResults,
     candidates: candidates.length, pageFetches: inFlightPages.size,
@@ -569,11 +637,18 @@ async function executeSearch(
   // head of it. Cutting the pool before ranking wasted the extra candidates;
   // fetching all of them wasted the caller's time. Ordering first and fetching
   // second keeps the choice and drops the cost.
-  const raw = accepted(candidates, options, freshnessHours)
-    .sort((a, b) => preScore(b, plan) - preScore(a, plan))
-    .slice(0, maxResults + ENRICH_HEADROOM);
+  const requestedPages = requested ? await requested : [];
+  const requestedKeys = new Set(requestedPages.map((page) => urlKey(page.raw.url)));
 
-  if (raw.length === 0) {
+  const raw = accepted(candidates, options, freshnessHours)
+    .filter((candidate) => !requestedKeys.has(urlKey(candidate.url)))
+    .sort((a, b) => preScore(b, plan) - preScore(a, plan))
+    .slice(0, Math.max(0, maxResults + ENRICH_HEADROOM - requestedPages.length));
+
+  // Only give up when there is genuinely nothing — a query that was just a
+  // link produces no candidates by design, and returning empty there would
+  // drop the one page the caller actually asked for.
+  if (raw.length === 0 && requestedPages.length === 0) {
     for (const work of inFlightPages.values()) work.controller.abort();
     return {
       query: trimmed,
@@ -594,7 +669,10 @@ async function executeSearch(
   } finally {
     for (const work of inFlightPages.values()) work.controller.abort();
   }
-  const hostCounts = corroborationByHost(raw);
+
+  // The caller's own links first, then what discovery found.
+  enriched = [...requestedPages, ...enriched];
+  const hostCounts = corroborationByHost([...requestedPages.map((p) => p.raw), ...raw]);
 
   let results: SearchResult[] = enriched.map((item) => {
     let host = "";
@@ -668,7 +746,11 @@ function searchLookup(
   const domains = (items?: string[]) => [...new Set((items ?? []).map((d) =>
     d.trim().toLowerCase().replace(/^\*\./, "").replace(/^\./, "").replace(/\.$/, "")))].sort();
   return {
+    // The requested links are part of the identity of the answer: "example.com
+    // bu ne" and "bu ne" optimize to the same search terms but are not the
+    // same question, and without this they would share a cache entry.
     namespace: JSON.stringify(["search", plan.intent, options.includeContent !== false, options.depth ?? "balanced",
+      plan.urls,
       domains(options.domainPolicy?.allowedDomains), domains(options.domainPolicy?.blockedDomains),
       domains(options.domainFilter?.include), domains(options.domainFilter?.exclude)]),
     query: plan.optimized, locale, maxResults, freshnessHours,

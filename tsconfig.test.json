@@ -17,6 +17,7 @@
   "files": [
     "lib/rank/bm25.ts",
     "lib/rank/chunk.ts",
-    "lib/research/questions.ts"
+    "lib/research/questions.ts",
+    "lib/search/urls.ts"
   ]
 }

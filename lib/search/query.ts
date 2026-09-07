@@ -1,4 +1,5 @@
 import { QueryIntent, QueryPlan } from "@/lib/search/types";
+import { extractUrls } from "@/lib/search/urls";
 
 /**
  * Query understanding.
@@ -216,8 +217,13 @@ export function planQuery(
   query: string,
   options: { subQuestions?: number; freshnessHours?: number | null } = {}
 ): QueryPlan {
-  const intent = detectIntent(query);
-  const optimized = optimize(query, intent) || query.trim();
+  // A pasted link is an instruction to read that page, not a search term. The
+  // rest of the query — if there is any — is still searched.
+  const { urls, remainder, onlyUrls } = extractUrls(query);
+  const searchable = onlyUrls ? query : remainder || query;
+
+  const intent = detectIntent(searchable);
+  const optimized = optimize(searchable, intent) || searchable.trim();
   const suggested = detectFreshness(query, intent);
   const freshness = options.freshnessHours ?? suggested;
 
@@ -229,8 +235,10 @@ export function planQuery(
     suggestedFreshnessHours: suggested,
     subQueries:
       options.subQuestions && options.subQuestions > 1
-        ? decompose(query, options.subQuestions, intent)
+        ? decompose(searchable, options.subQuestions, intent)
         : [optimized],
-    language: detectLanguage(query),
+    language: detectLanguage(searchable),
+    urls,
+    urlsOnly: onlyUrls,
   };
 }

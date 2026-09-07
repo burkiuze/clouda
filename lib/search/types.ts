@@ -51,6 +51,10 @@ export interface QueryPlan {
   /** Decomposition for research; a single-item list for a simple lookup. */
   subQueries: string[];
   language: string;
+  /** Addresses found in the query, which are fetched rather than searched for. */
+  urls: string[];
+  /** True when the query was nothing but addresses, so no search is needed. */
+  urlsOnly: boolean;
 }
 
 export interface SearchOptions {

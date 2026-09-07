@@ -130,3 +130,45 @@ test("a question is not an answer", () => {
   assert.ok(!isQuestion("Autovacuum reclaims dead tuples but does not shrink an index."));
   assert.ok(!isQuestion("According to the docs, the operation requires twice the disk space."));
 });
+
+test("a pasted link is recognised as an address, not a search term", async () => {
+  const { extractUrls } = await import("../.test-build/search/urls.js");
+
+  const plain = extractUrls("https://docs.python.org/3/library/asyncio.html");
+  assert.deepEqual(plain.urls, ["https://docs.python.org/3/library/asyncio.html"]);
+  assert.equal(plain.onlyUrls, true);
+
+  // A link plus a question is both: read the page, and search the question.
+  const mixed = extractUrls("https://example.com/post bu ne diyor");
+  assert.deepEqual(mixed.urls, ["https://example.com/post"]);
+  assert.equal(mixed.remainder, "bu ne diyor");
+  assert.equal(mixed.onlyUrls, false);
+
+  // Bare hostnames are accepted when the suffix is one people browse to.
+  assert.deepEqual(extractUrls("wikipedia.org").urls, ["https://wikipedia.org/"]);
+  assert.deepEqual(extractUrls("www.bbc.co.uk/news").urls, ["https://www.bbc.co.uk/news"]);
+
+  // And are not, when it is a file that merely looks like one. Guessing wrong
+  // here turns a search into a failed fetch.
+  assert.deepEqual(extractUrls("node.js nedir").urls, []);
+  assert.deepEqual(extractUrls("package.json nasıl okunur").urls, []);
+  assert.deepEqual(extractUrls("app.tsx hatası").urls, []);
+});
+
+test("URL extraction handles punctuation, duplicates and credentials", async () => {
+  const { extractUrls } = await import("../.test-build/search/urls.js");
+
+  // Sentence punctuation is not part of the address.
+  assert.deepEqual(extractUrls("bak https://example.com/a.").urls, ["https://example.com/a"]);
+  // But a bracket the URL itself opened is.
+  assert.ok(
+    extractUrls("https://en.wikipedia.org/wiki/Ruby_(programming_language)").urls[0].endsWith(
+      "(programming_language)"
+    )
+  );
+
+  assert.equal(extractUrls("https://a.com https://a.com").urls.length, 1);
+  assert.equal(extractUrls("https://user:pass@example.com").urls.length, 0);
+  assert.equal(extractUrls("a b c").urls.length, 0);
+  assert.equal(extractUrls("https://a.com https://b.com https://c.com https://d.com").urls.length, 3);
+});
