@@ -5,6 +5,7 @@ import { CloudaError } from "@/lib/core/errors";
 import { RawResult } from "@/lib/search/types";
 import { asRawResults, matchNews, newsCorpus } from "@/lib/search/newsroom";
 import { isUrlAllowed } from "@/lib/core/security";
+import { isValidOnionHost, onionSearchEnabled, torAvailable } from "@/lib/core/tor";
 import { contactEmail, userAgent } from "@/lib/config";
 
 /**
@@ -853,6 +854,91 @@ const searxng: Provider = {
   },
 };
 
+/**
+ * Onion services, through Ahmia's clearnet index.
+ *
+ * Finding an onion address and reading it are separate problems, and only the
+ * second needs Tor: ahmia.fi is an ordinary website that indexes onion
+ * services, so the discovery half works on any deployment. Results whose pages
+ * cannot be fetched still carry a title, an address and a snippet — which for
+ * this source is often the whole of what a caller wants.
+ *
+ * Never in a default provider set. An onion index adds nothing to an ordinary
+ * question — the answer to "node.js nedir" is not on a hidden service — and
+ * costs a request the operator did not ask for. It is included only when a
+ * caller passes include_onion, and only when the operator enabled it.
+ *
+ * Ahmia publishes no JSON API, so the HTML is parsed; the parse is written to
+ * survive a markup change by falling back to any onion address on the page
+ * rather than depending on one class name. It also applies its own legal
+ * blacklist, which is a reason to prefer it over crawling onion directories
+ * directly, though it is a filter and not a guarantee.
+ */
+const AHMIA_TIMEOUT = 3500;
+
+const ahmia: Provider = {
+  name: "ahmia",
+  tier: "web",
+  available: () => onionSearchEnabled(),
+  async search(query, limit) {
+    if (!onionSearchEnabled()) return [];
+    const html = await getText(
+      `https://ahmia.fi/search/?q=${encodeURIComponent(query)}`,
+      { headers: { "User-Agent": userAgent(), Accept: "text/html" } },
+      AHMIA_TIMEOUT
+    );
+    if (!html) return [];
+
+    const $ = cheerio.load(html);
+    const seen = new Set<string>();
+    const out: RawResult[] = [];
+
+    /** Ahmia links out through a redirect page carrying the real address. */
+    const target = (href: string | undefined, cite: string): string | null => {
+      const candidates: string[] = [];
+      if (href) {
+        try {
+          const redirect = new URL(href, "https://ahmia.fi").searchParams.get("redirect_url");
+          if (redirect) candidates.push(redirect);
+        } catch { /* not a URL we can read a parameter out of */ }
+        if (/^https?:\/\//i.test(href)) candidates.push(href);
+      }
+      if (cite) candidates.push(/^https?:\/\//i.test(cite) ? cite : `http://${cite}`);
+      for (const candidate of candidates) {
+        try {
+          const url = new URL(candidate.trim());
+          if (isValidOnionHost(url.hostname)) return url.toString();
+        } catch { /* keep looking */ }
+      }
+      return null;
+    };
+
+    const take = (title: string, url: string | null, snippet: string) => {
+      if (!url || !title || seen.has(url) || out.length >= limit) return;
+      seen.add(url);
+      out.push({ title: plain(title).slice(0, 300), url, snippet: plain(snippet).slice(0, 600), publishedAt: null });
+    };
+
+    $("li.result, .result").each((_index, element) => {
+      const node = $(element);
+      const anchor = node.find("h4 a, h3 a, a").first();
+      take(anchor.text() || node.find("h4, h3").first().text(),
+        target(anchor.attr("href"), node.find("cite").first().text().trim()),
+        node.find("p").first().text());
+    });
+
+    // Fallback for a markup change: any anchor that still names an onion.
+    if (out.length === 0) {
+      $("a[href]").each((_index, element) => {
+        const anchor = $(element);
+        take(anchor.text(), target(anchor.attr("href"), ""), "");
+      });
+    }
+
+    return out.slice(0, limit);
+  },
+};
+
 export const ALL_PROVIDERS = [
   searxng,
   ...OPEN_PROVIDERS,
@@ -861,6 +947,7 @@ export const ALL_PROVIDERS = [
   packages,
   mdn,
   secFilings,
+  ahmia,
 ];
 
 export { newsroom };
@@ -893,9 +980,25 @@ function providersForIntent(intent: string): Provider[] {
   }
 }
 
-export function openProvidersForIntent(intent: string): Provider[] {
+export interface ProviderSelection {
+  /** Add the onion index. Opt-in per request, and still subject to the
+   * operator having enabled it at all. */
+  includeOnion?: boolean;
+}
+
+export function openProvidersForIntent(intent: string, selection: ProviderSelection = {}): Provider[] {
   const configured = searxng.available() ? [searxng] : [];
-  return [...configured, ...providersForIntent(intent)];
+  // Last in the list on purpose: discovery starts sources in order, so the
+  // slowest and narrowest one never delays the sources that answer the
+  // question, and is dropped entirely once the others have enough.
+  const onion = selection.includeOnion && ahmia.available() ? [ahmia] : [];
+  return [...configured, ...providersForIntent(intent), ...onion];
+}
+
+/** Whether onion results can be read as well as listed. Callers surface this
+ * so an agent is told why a result has an address but no content. */
+export function onionFetchable(): boolean {
+  return torAvailable();
 }
 
 export function providerUnavailable(name: string): CloudaError {

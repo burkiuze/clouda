@@ -102,6 +102,13 @@ export const MCP_TOOLS: McpTool[] = [
         search_depth: { type: "string", enum: ["fast", "balanced", "deep"], default: "balanced" },
         locale: { type: "string", description: "Örnek: tr-TR, en-US." },
         no_cache: { type: "boolean" },
+        include_onion: {
+          type: "boolean",
+          description:
+            "Tor onion servislerini de ara (Ahmia indeksi). Varsayılan kapalı; sıradan " +
+            "sorular için faydası yok, tehdit istihbaratı ve sansür araştırması içindir. " +
+            "Sonuçların sayfa metni yalnızca sunucuda Tor tanımlıysa okunabilir.",
+        },
         exclude_domains: { type: "array", items: { type: "string" } },
         include_domains: {
           type: "array",
@@ -120,6 +127,7 @@ export const MCP_TOOLS: McpTool[] = [
         depth: parseSearchDepth(args.search_depth),
         locale: parseLocale(args.locale),
         noCache: args.no_cache === true,
+        includeOnion: args.include_onion === true,
         domainPolicy: ctx.policy,
         domainFilter: {
           include: parseDomains(args.include_domains, "include_domains"),

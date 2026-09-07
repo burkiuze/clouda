@@ -67,6 +67,14 @@ export interface SearchOptions {
   includeContent?: boolean;
   /** Bypass the cache entirely. */
   noCache?: boolean;
+  /**
+   * Also ask the onion index. Off by default and deliberately not implied by
+   * any depth: onion services are a research surface, not a better answer to
+   * an ordinary question, and asking for them costs a request every time.
+   * Requires the operator to have enabled it; reading the pages behind the
+   * results additionally requires a Tor proxy.
+   */
+  includeOnion?: boolean;
   domainPolicy?: { allowedDomains?: string[]; blockedDomains?: string[] };
   /**
    * Per-request domain filter, separate from the key's policy: the policy says

@@ -127,6 +127,13 @@ export async function GET(req: NextRequest) {
               },
               include_content: { type: "boolean", default: true },
               no_cache: { type: "boolean", default: false },
+              include_onion: {
+                type: "boolean",
+                default: false,
+                description:
+                  "Tor onion servislerini de ara. Sunucuda etkinleştirilmemişse yok sayılır; " +
+                  "sayfa metni yalnızca sunucuda Tor tanımlıysa çıkarılır.",
+              },
               mode: { type: "string", enum: ["results", "sources", "claims"], default: "results" },
               include_domains: { type: "array", items: { type: "string" } },
               exclude_domains: { type: "array", items: { type: "string" } },

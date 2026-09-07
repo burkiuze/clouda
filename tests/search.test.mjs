@@ -29,6 +29,20 @@ test("content and link-only searches never share an answer-cache entry", async (
   await f.drain();
 });
 
+test("an onion search never reuses the answer cached for the ordinary one", async () => {
+  const f = fixture();
+  const plain = await f.searchWeb("veri sizintisi", { includeContent: false });
+  assert.equal(plain.cacheHit, false);
+  // Same words, a different question: one asked the open web, the other also
+  // asked a hidden-service index. Sharing an entry would answer the second
+  // from a search that never looked.
+  const onion = await f.searchWeb("veri sizintisi", { includeContent: false, includeOnion: true });
+  assert.equal(onion.cacheHit, false);
+  const again = await f.searchWeb("veri sizintisi", { includeContent: false, includeOnion: true });
+  assert.equal(again.cacheHit, true);
+  await f.drain();
+});
+
 test("domain policies isolate cached answers and prevent disallowed prefetches", async () => {
   const f = fixture();
   await f.searchWeb("graph database", { includeContent: false });

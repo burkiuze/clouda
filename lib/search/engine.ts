@@ -297,7 +297,8 @@ async function discover(
   plan: QueryPlan, limit: number, locale: string, freshnessHours: number | null | undefined,
   options: SearchOptions, onResults?: (results: RawResult[]) => void
 ): Promise<DiscoveryOutcome> {
-  const open = openProvidersForIntent(plan.intent).filter((p) => p.available());
+  const open = openProvidersForIntent(plan.intent, { includeOnion: options.includeOnion === true })
+    .filter((p) => p.available());
   if (open.length === 0) return { results: [], provider: "none", degraded: [], providersQueried: 0, providersWithResults: 0 };
   const profile = SEARCH_PROFILES[options.depth ?? "balanced"];
   const deep = options.depth === "deep";
@@ -750,7 +751,7 @@ function searchLookup(
     // bu ne" and "bu ne" optimize to the same search terms but are not the
     // same question, and without this they would share a cache entry.
     namespace: JSON.stringify(["search", plan.intent, options.includeContent !== false, options.depth ?? "balanced",
-      plan.urls,
+      plan.urls, options.includeOnion === true,
       domains(options.domainPolicy?.allowedDomains), domains(options.domainPolicy?.blockedDomains),
       domains(options.domainFilter?.include), domains(options.domainFilter?.exclude)]),
     query: plan.optimized, locale, maxResults, freshnessHours,

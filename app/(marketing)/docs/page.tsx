@@ -172,6 +172,7 @@ export default function DocsPage() {
   "freshness": "week",       // hour | day | week | month | year | saat sayısı
   "include_content": true,   // sayfa metni çıkarılsın mı
   "no_cache": false,         // cache'i tamamen atla
+  "include_onion": false,    // Tor onion servislerini de ara (varsayılan kapalı)
   "mode": "results",         // results | sources | claims
   "include_domains": ["postgresql.org"],  // yalnızca bu alan adları (alt alanlar dahil)
   "exclude_domains": ["pinterest.com"]    // bu alan adları hiç dönmesin

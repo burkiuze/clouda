@@ -8,6 +8,8 @@ import { mapSite } from "@/lib/crawl/sitemap";
 import { MCP_TOOLS, findTool } from "@/lib/mcp/tools";
 import { newsCorpus, matchNews } from "@/lib/search/newsroom";
 import { searchWeb } from "@/lib/search/engine";
+import { ALL_PROVIDERS, searchProvider } from "@/lib/search/providers";
+import { onionSearchEnabled, torAvailable, torFetch } from "@/lib/core/tor";
 import type { ApiContext } from "@/lib/api/gateway";
 
 export const dynamic = "force-dynamic";
@@ -202,6 +204,43 @@ export async function GET(req: NextRequest) {
       expect(pasted === 0, `yapıştırılan link ${pasted}. sırada`);
       expect(result.results.length > 1, "yalnızca link döndü, arama yapılmadı");
       return `${result.results.length} sonuç, ilki link, kaynak: ${result.provider}`;
+    })
+  );
+
+  // Tor is off by default, so these report configuration rather than demand it.
+  // When it IS configured they measure it: a proxy address that is set but not
+  // listening, or a circuit that never comes up, is the failure operators hit,
+  // and it is invisible until something asks for an onion address.
+  checks.push(
+    await check("tor", async () => {
+      if (!torAvailable()) return "kapalı (TOR_SOCKS_PROXY tanımlı değil)";
+      const started = Date.now();
+      // Forced through the circuit regardless of TOR_ALL_TRAFFIC, and over
+      // TLS, so this exercises the same path an onion fetch takes.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45_000);
+      try {
+        const res = await torFetch("https://check.torproject.org/api/ip",
+          { maxBytes: 8192, signal: controller.signal });
+        const data = JSON.parse(await res.text()) as { IsTor?: boolean; IP?: string };
+        expect(data.IsTor === true, `devre kurulmadı (IsTor=${data.IsTor})`);
+        return `devre çalışıyor, çıkış ${data.IP}, ${Date.now() - started}ms`;
+      } finally {
+        clearTimeout(timer);
+      }
+    })
+  );
+
+  checks.push(
+    await check("onion:ahmia", async () => {
+      if (!onionSearchEnabled()) return "kapalı (CLOUDA_ONION_SEARCH / TOR_SOCKS_PROXY tanımlı değil)";
+      const provider = ALL_PROVIDERS.find((p) => p.name === "ahmia");
+      expect(provider != null, "sağlayıcı kayıtlı değil");
+      const results = await searchProvider(provider!, "wiki", 5, "en");
+      expect(results.length > 0, "sonuç yok — Ahmia yanıt vermedi veya şablon değişti");
+      expect(results.every((r) => r.url.includes(".onion")), "onion olmayan adres döndü");
+      return `${results.length} onion sonucu, ilki ${new URL(results[0].url).hostname.slice(0, 20)}…` +
+        (torAvailable() ? " (metin okunabilir)" : " (metin okunamaz: Tor yok)");
     })
   );
 

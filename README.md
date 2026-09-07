@@ -185,6 +185,49 @@ açık HTTP(S) adresleri kabul edilir. Yapılandırılmadığında bu kaynak etk
 SearXNG'nin kullandığı motorları ve erişim koşullarını sunucu işletmecisi belirler.
 [Resmî arama API'si](https://docs.searxng.org/dev/search_api.html).
 
+### Tor ve onion servisleri
+
+Varsayılan olarak kapalı. `TOR_SOCKS_PROXY` tanımlı değilken `.onion` adresleri
+tıpkı eskisi gibi reddedilir ve tek bir istek bile rota değiştirmez.
+
+Burada iki ayrı iş var ve karıştırılmamaları önemli:
+
+- **Bulmak** Tor gerektirmez. Ahmia (`ahmia.fi`) onion servislerini indeksleyen
+  sıradan bir web sitesidir, normal ağdan cevap verir. `CLOUDA_ONION_SEARCH=1`
+  ile Tor kurmadan da onion *adresleri* listelenebilir.
+- **Okumak** Tor gerektirir. `.onion` bir DNS adı değildir; devre dışında hiçbir
+  çözümleyici onu çözemez. `TOR_SOCKS_PROXY` tanımlıysa sayfa metni de çıkarılır,
+  değilse sonuç başlık + adres + snippet olarak kalır ve yanıt bunu
+  `onion.readable: false` ile söyler.
+
+İstek başına açıkça istenir; hiçbir derinlik profili bunu kendiliğinden açmaz:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"veri sızıntısı","include_onion":true}'
+```
+
+Adres çözümlemesi proxy'ye bırakılır (SOCKS5 `ATYP=domain`, yani `socks5h`
+davranışı): bir `.onion` adı hiçbir zaman yerel bir DNS çözümleyicisine
+gitmez. Yalnızca v3 adresleri (56 karakter) kabul edilir; v2 adresleri 2021'de
+çözülmeyi bıraktığı için aranmadan reddedilir. Tor'u açmak başka hiçbir şeyi
+gevşetmez — `localhost`, özel IP aralıkları ve `http(s)` dışı protokoller
+aynen engelli kalır, alan adı politikaları onion adreslerine de uygulanır.
+
+Beklenti ayarı: onion indeksi sıradan bir soruya değer katmaz. "node.js nedir"
+sorusunun cevabı gizli serviste değildir. Değer kattığı yer dar — tehdit
+istihbaratı, sızıntı takibi, sansür ve gazetecilik araştırması. Bu yüzden
+opsiyonel ve varsayılan kapalı. Ahmia kendi yasal kara listesini uygular; bu
+bir filtredir, garanti değildir.
+
+`TOR_ALL_TRAFFIC=1` her giden isteği Tor'dan geçirir. Bunun bedeli ölçülebilir:
+devre üç aktarmadır, doğrudan birkaç yüz milisaniyede biten bir çekim
+saniyelere çıkar, ve birçok kaynak çıkış düğümlerini hız sınırına sokar ya da
+bot doğrulaması ister — bu kod tabanı bunu zaten CAPTCHA olarak algılayıp
+kaynağın devre kesicisine yazar. Kurulumun kendi adresini gizlemesi gerekiyorsa
+vardır; arama kalitesi için değildir.
+
 | Profil | İlk kaynak dalgası | Keşif: web / dikey | Kurtarma üst sınırı | İçerik son sınırı / sayfa sınırı |
 | --- | --- | --- | --- | --- |
 | `fast` | 3 kaynak; gerekirse 80 ms sonra diğerleri | 450 / 350 ms | 700 ms | 1000 ms / 3 |
@@ -321,6 +364,11 @@ lisansları, projenin kaynak kodu lisansından ayrıdır.
 > Kod tabanı yeni API adresine (`api2.marginalia-search.com`) taşındığı için
 > koşulların değişmiş olması da mümkün. Bu satır, "değişmiş olabilir" demek
 > için değil, neyin doğrulanması gerektiğini isimlendirmek için burada.
+
+Tor ve onion servisleri isteğe bağlıdır ve varsayılan olarak kapalıdır. Tor
+kullanımı bazı ülkelerde engelli veya riskli olabilir; onion içeriğinin bir
+kısmı yasa dışıdır ve Ahmia'nın filtresi bunu azaltır ama ortadan kaldırmaz.
+Bu özelliği açmak kurulumu işletenin kararıdır.
 
 URL kontrolleri protokol, alan adı ve özel IP literal kısıtları uygular.
 DNS yanıtlarını bağlantıya sabitlemez; güvenilmeyen URL'lerle kamuya açık bir

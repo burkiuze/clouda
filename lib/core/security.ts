@@ -1,4 +1,5 @@
 import { CloudaError } from "@/lib/core/errors";
+import { isOnionHost, isValidOnionHost, torAvailable } from "@/lib/core/tor";
 
 /**
  * URL policy for everything the platform fetches on a caller's behalf.
@@ -19,7 +20,7 @@ const BLOCKED_HOSTNAMES = new Set([
   "instance-data",
 ]);
 
-const BLOCKED_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".cluster.local", ".onion"];
+const BLOCKED_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".cluster.local"];
 
 /** Literal addresses in private, loopback, link-local and carrier-NAT ranges. */
 function isPrivateAddress(hostname: string): boolean {
@@ -95,11 +96,29 @@ export function assertUrlAllowed(rawUrl: string, policy: DomainPolicy = {}): URL
   url.hostname = hostname;
   if (!hostname) throw new CloudaError("invalid_url", "URL bir ana bilgisayar adı içermiyor.");
 
-  if (BLOCKED_HOSTNAMES.has(hostname) || BLOCKED_HOST_SUFFIXES.some((s) => hostname.endsWith(s))) {
-    throw new CloudaError("blocked_url", `Bu ana bilgisayara erişim engelli: ${hostname}`);
-  }
-  if (isPrivateAddress(hostname)) {
-    throw new CloudaError("blocked_url", `Özel ağ adresine istek yapılamaz: ${hostname}`);
+  if (isOnionHost(hostname)) {
+    // An onion address is refused outright unless the operator has configured
+    // Tor, which is the default: nothing can resolve .onion without it, so
+    // allowing it otherwise would only produce slow, confusing failures.
+    if (!torAvailable()) {
+      throw new CloudaError("blocked_url",
+        `.onion adresleri için TOR_SOCKS_PROXY tanımlı olmalı: ${hostname}`);
+    }
+    // v2 addresses stopped resolving in 2021. Refusing them here is cheaper
+    // than a circuit that will fail, and it also rejects the near-miss typos
+    // that would otherwise be dialled.
+    if (!isValidOnionHost(hostname)) {
+      throw new CloudaError("blocked_url", `Geçersiz onion adresi (v3 bekleniyor): ${hostname}`);
+    }
+    // No private-range check applies: the name is resolved inside the circuit
+    // by the proxy, never locally, so it cannot name a host on this network.
+  } else {
+    if (BLOCKED_HOSTNAMES.has(hostname) || BLOCKED_HOST_SUFFIXES.some((s) => hostname.endsWith(s))) {
+      throw new CloudaError("blocked_url", `Bu ana bilgisayara erişim engelli: ${hostname}`);
+    }
+    if (isPrivateAddress(hostname)) {
+      throw new CloudaError("blocked_url", `Özel ağ adresine istek yapılamaz: ${hostname}`);
+    }
   }
 
   const blocked = policy.blockedDomains ?? [];

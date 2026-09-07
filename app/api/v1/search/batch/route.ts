@@ -22,6 +22,7 @@ interface BatchBody {
   search_depth?: string;
   include_content?: boolean;
   no_cache?: boolean;
+  include_onion?: boolean;
   include_domains?: string[];
   exclude_domains?: string[];
 }
@@ -80,6 +81,7 @@ export const POST = withApi(
       freshnessHours: parseFreshness(body.freshness),
       includeContent: body.include_content !== false,
       noCache: body.no_cache === true,
+      includeOnion: body.include_onion === true,
       domainPolicy: ctx.policy,
       domainFilter: {
         include: parseDomains(body.include_domains, "include_domains"),

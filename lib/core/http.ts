@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { CloudaError } from "@/lib/core/errors";
 import { assertUrlAllowed, DomainPolicy } from "@/lib/core/security";
+import { shouldUseTor, torFetch } from "@/lib/core/tor";
 
 /** One outbound path for providers, extraction, browse and monitors. */
 export const DEFAULT_USER_AGENT =
@@ -37,6 +38,9 @@ const fetchScope = new AsyncLocalStorage<AbortSignal>();
 export function withFetchSignal<T>(signal: AbortSignal, task: () => Promise<T>): Promise<T> {
   return fetchScope.run(signal, task);
 }
+
+/** Floor for a request that goes over Tor; see safeFetch. */
+const TOR_MIN_TIMEOUT_MS = 20_000;
 
 const CAPTCHA_MARKERS = [
   "captcha", "cf-challenge", "checking your browser", "unusual traffic",
@@ -89,8 +93,15 @@ export async function safeFetch(rawUrl: string, options: FetchOptions = {}): Pro
   const started = Date.now();
   const chain: string[] = [];
   let current = assertUrlAllowed(rawUrl, policy).toString();
+  // A Tor circuit is three relays before the first byte, so the ordinary
+  // budget — sized against direct fetches measured in hundreds of
+  // milliseconds — would time out every onion request before it began. The
+  // caller's own deadline still cancels through the inherited signal, so this
+  // raises the floor without letting a slow circuit outlive its request.
+  const overTor = shouldUseTor(new URL(current).hostname);
+  const budgetMs = overTor ? Math.max(timeoutMs, TOR_MIN_TIMEOUT_MS) : timeoutMs;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), budgetMs);
   const inherited = fetchScope.getStore();
   const signals = [controller.signal, ...(callerSignal ? [callerSignal] : []), ...(inherited ? [inherited] : [])];
   const signal = signals.length === 1 ? controller.signal : AbortSignal.any(signals);
@@ -101,7 +112,10 @@ export async function safeFetch(rawUrl: string, options: FetchOptions = {}): Pro
     for (let hop = 0; hop <= maxRedirects; hop++) {
       signal.throwIfAborted();
       chain.push(current);
-      const res = await fetch(current, { ...init, headers: requestHeaders, redirect: "manual", signal });
+      const res = shouldUseTor(new URL(current).hostname)
+        ? await torFetch(current, { method: init.method, headers: requestHeaders,
+            body: typeof init.body === "string" ? init.body : null, maxBytes, signal })
+        : await fetch(current, { ...init, headers: requestHeaders, redirect: "manual", signal });
       const location = res.headers.get("location");
       if ([301, 302, 303, 307, 308].includes(res.status)) {
         void res.body?.cancel().catch(() => {});
@@ -137,7 +151,8 @@ export async function safeFetch(rawUrl: string, options: FetchOptions = {}): Pro
   } catch (error) {
     if (error instanceof CloudaError) throw error;
     throw new CloudaError(signal.aborted ? "fetch_timeout" : "fetch_failed",
-      signal.aborted ? "İstek süre sınırında tamamlanmadı." : "Adrese ulaşılamadı.", { url: current, timeoutMs });
+      signal.aborted ? "İstek süre sınırında tamamlanmadı." : "Adrese ulaşılamadı.",
+      { url: current, timeoutMs: budgetMs });
   } finally {
     clearTimeout(timer);
   }

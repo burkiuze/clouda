@@ -10,6 +10,7 @@ import {
   shapeResult,
 } from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
+import { onionFetchable } from "@/lib/search/providers";
 import { verifyClaims } from "@/lib/research/citations";
 import { CloudaError } from "@/lib/core/errors";
 
@@ -24,6 +25,7 @@ interface SearchBody {
   search_depth?: string;
   include_content?: boolean;
   no_cache?: boolean;
+  include_onion?: boolean;
   mode?: string;
   include_domains?: string[];
   exclude_domains?: string[];
@@ -52,6 +54,7 @@ export const POST = withApi(
       freshnessHours: parseFreshness(body.freshness),
       includeContent: mode === "sources" ? false : body.include_content !== false,
       noCache: body.no_cache === true,
+      includeOnion: body.include_onion === true,
       domainPolicy: ctx.policy,
       domainFilter: {
         include: parseDomains(body.include_domains, "include_domains"),
@@ -69,6 +72,10 @@ export const POST = withApi(
       cached: result.cacheHit,
       diagnostics: result.diagnostics,
       ...(result.degraded.length > 0 ? { degraded_providers: result.degraded } : {}),
+      // An onion result with an empty body is not a failed extraction, it is a
+      // deployment without a Tor proxy. Say which, rather than leaving the
+      // caller to guess from a blank field.
+      ...(body.include_onion === true ? { onion: { readable: onionFetchable() } } : {}),
     };
 
     if (mode === "claims") {
