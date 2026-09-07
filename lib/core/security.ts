@@ -28,10 +28,16 @@ function isPrivateAddress(hostname: string): boolean {
   // IPv6 loopback and unique-local / link-local prefixes.
   if (host === "::1" || host === "::") return true;
   if (/^f[cd][0-9a-f]{2}:/i.test(host)) return true;
-  if (/^fe80:/i.test(host)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(host) || /^ff/i.test(host)) return true;
   // IPv4-mapped IPv6, e.g. ::ffff:127.0.0.1
   const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(host);
   if (mapped) return isPrivateAddress(mapped[1]);
+  // WHATWG URL canonicalizes mapped IPv4 into hexadecimal hextets.
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+  if (mappedHex) {
+    const high = parseInt(mappedHex[1], 16), low = parseInt(mappedHex[2], 16);
+    return isPrivateAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+  }
 
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (!v4) return false;
@@ -60,8 +66,8 @@ export interface DomainPolicy {
  * ignored, since both spellings are what people reach for.
  */
 export function hostMatches(hostname: string, pattern: string): boolean {
-  const host = hostname.toLowerCase();
-  const p = pattern.toLowerCase().replace(/^\*\./, "").replace(/^\./, "");
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  const p = pattern.trim().toLowerCase().replace(/^\*\./, "").replace(/^\./, "").replace(/\.$/, "");
   return host === p || host.endsWith(`.${p}`);
 }
 
@@ -85,7 +91,8 @@ export function assertUrlAllowed(rawUrl: string, policy: DomainPolicy = {}): URL
     throw new CloudaError("blocked_url", "Kullanıcı bilgisi içeren URL'ler kabul edilmiyor.");
   }
 
-  const hostname = url.hostname.toLowerCase();
+  const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+  url.hostname = hostname;
   if (!hostname) throw new CloudaError("invalid_url", "URL bir ana bilgisayar adı içermiyor.");
 
   if (BLOCKED_HOSTNAMES.has(hostname) || BLOCKED_HOST_SUFFIXES.some((s) => hostname.endsWith(s))) {

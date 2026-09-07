@@ -1,11 +1,13 @@
 import * as cheerio from "cheerio";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { safeFetch } from "@/lib/core/http";
 import { CloudaError } from "@/lib/core/errors";
 import { RawResult } from "@/lib/search/types";
 import { asRawResults, matchNews, newsCorpus } from "@/lib/search/newsroom";
+import { isUrlAllowed } from "@/lib/core/security";
 
 /**
- * Discovery providers — all of them open, none of them keyed.
+ * Discovery providers: open APIs plus an optional operator-configured backend.
  *
  * Which sources are listed here was decided by measurement from the
  * deployment's own egress, not by reputation. From a datacenter range the
@@ -54,12 +56,34 @@ export interface Provider {
 const PROVIDER_TIMEOUT = 2500;
 const MARGINALIA_TIMEOUT = 2500;
 
+const attemptScope = new AsyncLocalStorage<{ succeeded: number; failed: number }>();
+
+/** Composite providers may lose one endpoint and keep useful results. Only a
+ * wholly failed attempt is an outage; a valid empty response is not one.
+ */
+export async function searchProvider(
+  provider: Provider, query: string, limit: number, locale: string, freshnessHours?: number | null
+): Promise<RawResult[]> {
+  const attempt = { succeeded: 0, failed: 0 };
+  const results = await attemptScope.run(attempt, () => provider.search(query, limit, locale, freshnessHours));
+  if (!results.length && attempt.failed > 0 && attempt.succeeded === 0) throw providerUnavailable(provider.name);
+  return results;
+}
+
+function recordAttempt(success: boolean): void {
+  const attempt = attemptScope.getStore();
+  if (attempt) attempt[success ? "succeeded" : "failed"]++;
+}
+
 async function getJson<T>(url: string, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT): Promise<T | null> {
   try {
     const res = await safeFetch(url, { ...init, trusted: true, timeoutMs });
-    if (res.status >= 400) return null;
-    return JSON.parse(res.body) as T;
+    if (res.status < 200 || res.status >= 300) throw new Error("upstream_status");
+    const value = JSON.parse(res.body) as T;
+    recordAttempt(true);
+    return value;
   } catch {
+    recordAttempt(false);
     return null;
   }
 }
@@ -68,9 +92,11 @@ async function getJson<T>(url: string, init?: RequestInit, timeoutMs = PROVIDER_
 async function getText(url: string, init?: RequestInit, timeoutMs = PROVIDER_TIMEOUT): Promise<string | null> {
   try {
     const res = await safeFetch(url, { ...init, trusted: true, timeoutMs });
-    if (res.status >= 400) return null;
+    if (res.status < 200 || res.status >= 300) throw new Error("upstream_status");
+    recordAttempt(true);
     return res.body;
   } catch {
+    recordAttempt(false);
     return null;
   }
 }
@@ -90,8 +116,9 @@ const marginalia: Provider = {
     const data = await getJson<{
       results?: { url?: string; title?: string; description?: string; quality?: number }[];
     }>(
-      `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
-      undefined,
+      `https://api2.marginalia-search.com/search?query=${encodeURIComponent(query)}` +
+        `&count=${Math.min(limit, 100)}&timeout=250&dc=3&nsfw=1`,
+      { headers: { "API-Key": process.env.MARGINALIA_API_KEY || "public" } },
       MARGINALIA_TIMEOUT
     );
 
@@ -364,12 +391,11 @@ const googleNews: Provider = {
   async search(query, limit, locale) {
     const [lang, region = lang.toUpperCase()] = locale.split("-");
     try {
-      const res = await safeFetch(
+      const body = await getText(
         `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${lang}&gl=${region}&ceid=${region}:${lang}`,
-        { trusted: true, timeoutMs: PROVIDER_TIMEOUT }
       );
-
-      const $ = cheerio.load(res.body, { xml: true });
+      if (body === null) return [];
+      const $ = cheerio.load(body, { xml: true });
       const out: RawResult[] = [];
       $("item").each((_, el) => {
         if (out.length >= limit) return;
@@ -806,7 +832,28 @@ export const OPEN_PROVIDERS: Provider[] = [
   googleNews,
 ];
 
+/** Use an operator-configured endpoint, never a rotating public instance list.
+ * JSON must be enabled by the operator. User-supplied queries cannot change
+ * the endpoint; URL safety and redirect restrictions still apply.
+ */
+const searxng: Provider = {
+  name: "searxng", tier: "web",
+  available: () => Boolean(process.env.SEARXNG_BASE_URL && isUrlAllowed(process.env.SEARXNG_BASE_URL)),
+  async search(query, limit, locale, freshnessHours) {
+    if (!this.available()) return [];
+    const url = new URL(process.env.SEARXNG_BASE_URL!.replace(/\/?$/, "/") + "search");
+    url.search = new URLSearchParams({ q: query, format: "json", language: locale, safesearch: "2" }).toString();
+    if (freshnessHours != null && freshnessHours <= 8760) url.searchParams.set("time_range",
+      freshnessHours <= 24 ? "day" : freshnessHours <= 744 ? "month" : "year");
+    const data = await getJson<{ results?: { title?: string; url?: string; content?: string; publishedDate?: string }[] }>(url.toString());
+    return (data?.results ?? []).filter((r) => r.url && r.title).slice(0, limit).map((r) => ({
+      title: plain(r.title), url: r.url!, snippet: plain(r.content), publishedAt: r.publishedDate ?? null,
+    }));
+  },
+};
+
 export const ALL_PROVIDERS = [
+  searxng,
   ...OPEN_PROVIDERS,
   openalex,
   scholar,
@@ -825,7 +872,7 @@ export { newsroom };
  * to land. The verticals are added only where they help — OpenAlex answering a
  * news question returns papers that merely share a word with it.
  */
-export function openProvidersForIntent(intent: string): Provider[] {
+function providersForIntent(intent: string): Provider[] {
   switch (intent) {
     case "news":
       return [newsroom, marginalia, mwmbl, googleNews, wikipedia, wikidata];
@@ -841,8 +888,13 @@ export function openProvidersForIntent(intent: string): Provider[] {
     case "product":
       return [newsroom, marginalia, mwmbl, googleNews, hackernews, packages, wikipedia];
     default:
-      return OPEN_PROVIDERS;
+      return [marginalia, mwmbl, wikipedia, wikidata, newsroom, stackexchange, github, hackernews, googleNews];
   }
+}
+
+export function openProvidersForIntent(intent: string): Provider[] {
+  const configured = searxng.available() ? [searxng] : [];
+  return [...configured, ...providersForIntent(intent)];
 }
 
 export function providerUnavailable(name: string): CloudaError {

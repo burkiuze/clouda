@@ -1,6 +1,8 @@
 import { cacheGet, cacheSet } from "@/lib/core/cache";
 import { offload } from "@/lib/core/offload";
-import { safeFetch } from "@/lib/core/http";
+import { safeFetch, withFetchSignal } from "@/lib/core/http";
+import { isUrlAllowed } from "@/lib/core/security";
+import { within } from "@/lib/core/async";
 import type { RawResult } from "@/lib/search/types";
 
 /**
@@ -101,9 +103,13 @@ function decodeEntities(text: string): string {
   return text
     .replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (whole, code: string) => {
       if (code.startsWith("#x") || code.startsWith("#X")) {
-        return String.fromCodePoint(parseInt(code.slice(2), 16));
+        const n = parseInt(code.slice(2), 16);
+        return n <= 0x10ffff ? String.fromCodePoint(n) : whole;
       }
-      if (code.startsWith("#")) return String.fromCodePoint(Number(code.slice(1)));
+      if (code.startsWith("#")) {
+        const n = Number(code.slice(1));
+        return n <= 0x10ffff ? String.fromCodePoint(n) : whole;
+      }
       const named: Record<string, string> = {
         amp: "&",
         lt: "<",
@@ -150,13 +156,20 @@ function parseFeed(body: string, feed: Feed): NewsItem[] {
         block.match(/<guid[^>]*>(?:<!\[CDATA\[)?(https?:[\s\S]*?)(?:\]\]>)?<\/guid>/i)?.[1] ||
         "");
     if (!title || !link) continue;
+    const decoded = decodeEntities(link);
+    if (!isUrlAllowed(decoded)) continue;
+    const url = new URL(decoded);
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_.*|fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+    }
 
     const published = tag(block, "pubDate") || tag(block, "published") || tag(block, "updated") || tag(block, "dc:date");
     const parsed = published ? Date.parse(published) : NaN;
 
     items.push({
       title,
-      url: decodeEntities(link).split("?")[0],
+      url: url.toString(),
       snippet: (tag(block, "description") || tag(block, "summary") || tag(block, "content")).slice(0, 400),
       publishedAt: Number.isNaN(parsed) ? null : new Date(parsed).toISOString(),
       source: feed.name,
@@ -167,14 +180,30 @@ function parseFeed(body: string, feed: Feed): NewsItem[] {
   return items;
 }
 
+const feedSnapshots = new Map<string, {
+  items: NewsItem[]; checkedAt: number; etag?: string | null; lastModified?: string | null;
+}>();
+
 async function pullFeed(feed: Feed, timeoutMs: number): Promise<NewsItem[]> {
+  const snapshot = feedSnapshots.get(feed.url);
+  const previous = snapshot && Date.now() - snapshot.checkedAt < CORPUS_TTL_SECONDS * 1000 ? snapshot : null;
   try {
-    const res = await safeFetch(feed.url, { trusted: true, timeoutMs });
-    if (res.status >= 400) return [];
-    return parseFeed(res.body, feed).slice(0, 40);
+    const headers: Record<string, string> = {};
+    if (previous?.etag) headers["If-None-Match"] = previous.etag;
+    if (previous?.lastModified) headers["If-Modified-Since"] = previous.lastModified;
+    const res = await safeFetch(feed.url, { trusted: true, timeoutMs, headers });
+    if (res.status === 304 && previous) {
+      previous.checkedAt = Date.now();
+      return previous.items;
+    }
+    if (res.status < 200 || res.status >= 300) return previous?.items ?? [];
+    const items = parseFeed(res.body, feed).slice(0, 40);
+    if (!items.length) return previous?.items ?? [];
+    feedSnapshots.set(feed.url, { items, checkedAt: Date.now(), etag: res.etag, lastModified: res.lastModified });
+    return items;
   } catch {
-    // One dead feed is a smaller corpus, never a failed search.
-    return [];
+    // A failed refresh cannot relabel an old article as newly published.
+    return previous?.items ?? [];
   }
 }
 
@@ -185,7 +214,7 @@ async function pullAll(timeoutMs: number): Promise<NewsItem[]> {
 
   for (const items of pulled) {
     for (const item of items) {
-      const key = item.url.toLowerCase();
+      const key = item.url;
       if (seen.has(key)) continue;
       seen.add(key);
       corpus.push(item);
@@ -194,6 +223,34 @@ async function pullAll(timeoutMs: number): Promise<NewsItem[]> {
 
   corpus.sort((a, b) => Date.parse(b.publishedAt ?? "0") - Date.parse(a.publishedAt ?? "0"));
   return corpus;
+}
+
+let refreshing: Promise<NewsItem[]> | null = null;
+let refreshScheduled = false;
+let lastRefreshAt = 0;
+
+function refresh(timeoutMs: number): Promise<NewsItem[]> {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    // Shared corpus work outlives any one provider lookup; each feed keeps its own timeout.
+    const corpus = await withFetchSignal(new AbortController().signal, () => pullAll(timeoutMs));
+    if (corpus.length > 0) {
+      await cacheSet(CORPUS_LOOKUP, corpus, CORPUS_TTL_SECONDS, { background: true });
+      lastRefreshAt = Date.now();
+    }
+    return corpus;
+  })().finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+function scheduleRefresh() {
+  if (refreshScheduled || refreshing) return;
+  refreshScheduled = true;
+  offload(async () => {
+    try {
+      if (Date.now() - lastRefreshAt >= REFRESH_AFTER_SECONDS * 1000) await refresh(WARM_FETCH_TIMEOUT_MS);
+    } finally { refreshScheduled = false; }
+  });
 }
 
 /**
@@ -207,10 +264,7 @@ export async function newsCorpus(options: { blocking?: boolean } = {}): Promise<
 
   if (cached && cached.payload.length > 0) {
     if (cached.ageSeconds >= REFRESH_AFTER_SECONDS) {
-      offload(async () => {
-        const fresh = await pullAll(WARM_FETCH_TIMEOUT_MS);
-        if (fresh.length > 0) await cacheSet(CORPUS_LOOKUP, fresh, CORPUS_TTL_SECONDS);
-      });
+      scheduleRefresh();
     }
     return cached.payload;
   }
@@ -220,25 +274,21 @@ export async function newsCorpus(options: { blocking?: boolean } = {}): Promise<
   // never going to answer it. A search gets the corpus if it is there and
   // nothing at all if it is not — the pull happens after the response instead.
   if (!options.blocking) {
-    offload(async () => {
-      const fresh = await pullAll(WARM_FETCH_TIMEOUT_MS);
-      if (fresh.length > 0) await cacheSet(CORPUS_LOOKUP, fresh, CORPUS_TTL_SECONDS);
-    });
+    scheduleRefresh();
     return [];
   }
 
   // Awaited rather than offloaded: this path runs for a request that asked for
   // news and is waiting on it, and work handed to `after()` here would be
   // scheduled after the response that needed it.
-  const corpus = await pullAll(COLD_FETCH_TIMEOUT_MS);
-  if (corpus.length > 0) await cacheSet(CORPUS_LOOKUP, corpus, CORPUS_TTL_SECONDS);
-  return corpus;
+  const work = refresh(COLD_FETCH_TIMEOUT_MS);
+  offload(() => work);
+  return await within(work, COLD_FETCH_TIMEOUT_MS) ?? [];
 }
 
 /** Forces a corpus refresh; used by the warm-up cron. */
 export async function refreshNewsCorpus(): Promise<number> {
-  const corpus = await pullAll(WARM_FETCH_TIMEOUT_MS);
-  if (corpus.length > 0) await cacheSet(CORPUS_LOOKUP, corpus, CORPUS_TTL_SECONDS);
+  const corpus = await refresh(WARM_FETCH_TIMEOUT_MS);
   return corpus.length;
 }
 

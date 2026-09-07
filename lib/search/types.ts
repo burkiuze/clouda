@@ -54,6 +54,8 @@ export interface QueryPlan {
 }
 
 export interface SearchOptions {
+  /** Fast uses fewer sources; deep waits longer for broader coverage. */
+  depth?: import("@/lib/search/profiles").SearchDepth;
   maxResults?: number;
   locale?: string;
   freshnessHours?: number | null;
@@ -72,6 +74,14 @@ export interface SearchOptions {
 }
 
 export interface SearchResponse {
+  diagnostics?: {
+    depth: import("@/lib/search/profiles").SearchDepth;
+    providersQueried: number;
+    providersWithResults: number;
+    candidates: number;
+    pageFetches: number;
+    resultHosts: number;
+  };
   query: string;
   plan: QueryPlan;
   results: SearchResult[];

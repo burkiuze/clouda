@@ -288,7 +288,11 @@ export function withApi(
 /** Parses and validates a JSON body, with a consistent error for bad input. */
 export async function readJson<T>(req: NextRequest): Promise<T> {
   try {
-    return (await req.json()) as T;
+    const body: unknown = await req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new Error("Expected a JSON object");
+    }
+    return body as T;
   } catch {
     throw new CloudaError("invalid_request", "İstek gövdesi geçerli JSON değil.");
   }

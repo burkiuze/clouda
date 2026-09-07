@@ -1,3 +1,4 @@
+import { CLOUDA_RELEASE } from "@/lib/version";
 import { NextRequest, NextResponse } from "next/server";
 import { CAPABILITIES, CAPABILITY_LABELS, CREDITS } from "@/lib/constants";
 import { DATA_KINDS, INDICATOR_NAMES } from "@/lib/data/live";
@@ -76,8 +77,8 @@ export async function GET(req: NextRequest) {
   const spec = {
     openapi: "3.1.0",
     info: {
-      title: "Clouda",
-      version: "1.0.0",
+      title: CLOUDA_RELEASE.name,
+      version: CLOUDA_RELEASE.version,
       summary: "Yapay zeka modelleri ve ajanları için canlı web erişimi.",
       description:
         "Arama, haber, içerik çıkarımı, kaynaklı cevap, canlı veri, site haritası, " +
@@ -126,10 +127,11 @@ export async function GET(req: NextRequest) {
           requestBody: jsonBody(
             {
               query: { type: "string" },
+              search_depth: { type: "string", enum: ["fast", "balanced", "deep"], default: "balanced" },
               max_results: { type: "integer", minimum: 1, maximum: 30, default: 10 },
               locale: { type: "string", default: "tr-TR" },
               freshness: {
-                oneOf: [{ type: "string", enum: ["hour", "day", "week", "month", "year"] }, { type: "integer" }],
+                oneOf: [{ type: "string", enum: ["hour", "day", "week", "month", "year"] }, { type: "number", exclusiveMinimum: 0 }],
               },
               include_content: { type: "boolean", default: true },
               no_cache: { type: "boolean", default: false },
@@ -145,6 +147,12 @@ export async function GET(req: NextRequest) {
               intent: { type: "string" },
               provider: { type: "string" },
               cached: { type: "boolean" },
+              diagnostics: { type: "object", properties: {
+                depth: { type: "string", enum: ["fast", "balanced", "deep"] },
+                providersQueried: { type: "integer", description: "Dispatched provider tasks, including shared work; not HTTP request count." },
+                providersWithResults: { type: "integer" }, candidates: { type: "integer" },
+                pageFetches: { type: "integer" }, resultHosts: { type: "integer" },
+              } },
               results: { type: "array", items: { $ref: "#/components/schemas/SearchResult" } },
               degraded_providers: {
                 type: "array",
@@ -168,6 +176,7 @@ export async function GET(req: NextRequest) {
           requestBody: jsonBody(
             {
               queries: { type: "array", items: { type: "string" }, maxItems: 10 },
+              search_depth: { type: "string", enum: ["fast", "balanced", "deep"], default: "balanced" },
               max_results: { type: "integer", minimum: 1, maximum: 30 },
               include_content: { type: "boolean" },
               include_domains: { type: "array", items: { type: "string" } },

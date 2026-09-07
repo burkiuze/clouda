@@ -1,6 +1,13 @@
 import { CloudaError } from "@/lib/core/errors";
 import { FRESHNESS_WINDOWS } from "@/lib/constants";
 import type { SearchResult } from "@/lib/search/types";
+import type { SearchDepth } from "@/lib/search/profiles";
+
+export function parseSearchDepth(value: unknown): SearchDepth {
+  if (value == null) return "balanced";
+  if (value === "fast" || value === "balanced" || value === "deep") return value;
+  throw new CloudaError("invalid_request", "search_depth: fast, balanced veya deep olmalı.");
+}
 
 /**
  * Response shaping. The same underlying results can be returned in several

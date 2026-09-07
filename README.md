@@ -1,275 +1,267 @@
-# Clouda
+# Clouda North
 
-Yapay zeka modelleri ve ajanları için gerçek zamanlı web arama API'si. fal.ai
-tarzı bir ürün sitesi + Google ile giriş + her yeni hesaba otomatik 2000
-ücretsiz kredi + kendi (üçüncü parti anahtar gerektirmeyen) arama motoru.
+![Clouda North](public/clouda-north.png)
 
-## Stack
+**Sürüm 0.2.0 — North**
 
-- Next.js 15 (App Router) + TypeScript + Tailwind CSS
-- Auth.js (next-auth v5) — Google OAuth + Prisma adapter
-- Prisma + PostgreSQL
-- Kendi arama motoru: açık indekslerin paralel sorgulanması + RRF ile sıralama
-  birleştirme + sunucu taraflı sayfa içeriği çıkarımı (`lib/search/engine.ts`)
-  — üçüncü parti ücretli API anahtarı gerekmez.
+Yapay zeka modelleri ve ajanları için **açık kaynak web yetenekleri**. Web arama,
+sayfa okuma, kaynaklı yanıt, araştırma, belge sıralama ve metin parçalama
+araçlarını aynı kod tabanında birleştirir. Kendi ortamında çalıştırabilir,
+REST API veya MCP üzerinden ajanlarına bağlayabilir ve yeni sağlayıcılar ekleyebilirsin.
 
-## Yerel geliştirme
+Clouda bir model eğitmez; modele dış dünyadan bilgi getiren ve bu bilgiyi
+kullanılabilir biçime dönüştüren araçlar sağlar.
+
+## Yetenekler
+
+| Yetenek | Kod | HTTP arayüzü |
+| --- | --- | --- |
+| Web arama, kaynak birleştirme, içerik çıkarımı | `lib/search/` | `POST /api/v1/search` |
+| Birden çok sorgu | `lib/search/engine.ts` | `POST /api/v1/search/batch` |
+| Kaynaklardan alıntıya dayalı yanıt | `lib/research/citations.ts` | `POST /api/v1/answer` |
+| Çok turlu araştırma | `lib/research/orchestrator.ts` | `POST /api/v1/research` |
+| URL'den okunabilir metin çıkarımı | `lib/search/extract.ts` | `POST /api/v1/extract` |
+| Sayfa açma ve bağlantı takibi | `lib/browser/agent.ts` | `POST /api/v1/browse` |
+| Site haritası | `lib/crawl/sitemap.ts` | `POST /api/v1/map` |
+| Haber beslemeleri | `lib/search/newsroom.ts` | `POST /api/v1/news` |
+| Yapılandırılmış canlı veri | `lib/data/live.ts` | `POST /api/v1/data` |
+| BM25 ve çeşitlilik ile belge sıralama | `lib/rank/bm25.ts` | `POST /api/v1/rerank` |
+| Yapıyı koruyarak metin parçalama | `lib/rank/chunk.ts` | `POST /api/v1/chunk` |
+| Sosyal kaynaklar | `lib/social/providers.ts` | `POST /api/v1/social` |
+| Değişiklik izleme | `lib/monitor/watcher.ts` | `POST /api/v1/monitors` |
+| MCP araçları | `lib/mcp/tools.ts` | `POST /api/mcp` |
+| Makine tarafından okunabilir API şeması | `app/api/v1/openapi/` | `GET /api/v1/openapi` |
+
+## Kod yapısı
+
+- `lib/`: arama, sıralama, içerik çıkarımı ve diğer araçların uygulaması.
+- `lib/core/`: ortak HTTP, önbellek, süre sınırları, hata türleri ve kaynak sağlığı.
+- `app/api/`: REST ve MCP arayüzleri.
+- `app/` ve `components/`: örnek web arayüzü, hesap ve API anahtarı yönetimi.
+- `prisma/`: PostgreSQL şeması ve migration dosyaları.
+- `tests/`: sıralama, arama, önbellek, HTTP ve hata davranışını doğrulayan testler.
+
+TypeScript, Next.js 15, React 19, Prisma/PostgreSQL ve Cheerio kullanılır.
+Bu depo henüz bağımsız yayımlanmış bir npm SDK'sı değildir. Saf hesaplama
+modülleri olan `lib/rank/` ağ veya veritabanı gerektirmez; arama ve HTTP
+entegrasyonu Node.js ortamında çalışır.
+
+## Yerel kurulum
+
+Node.js 22 veya 24, npm ve tam API için PostgreSQL gerekir.
 
 ```bash
-npm install
-cp .env.example .env   # değerleri doldur
-npx prisma migrate dev --name init
+git clone https://github.com/burkiuze/clouda.git
+cd clouda
+npm ci
+cp .env.example .env
+```
+
+`.env` içindeki örnek veritabanı adreslerini kendi PostgreSQL bağlantınla değiştir.
+Yerel bir kurulumun biçimi şöyledir:
+
+```dotenv
+DATABASE_URL="postgresql://clouda:YOUR_LOCAL_PASSWORD@localhost:5432/clouda"
+DIRECT_URL="postgresql://clouda:YOUR_LOCAL_PASSWORD@localhost:5432/clouda"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="YOUR_GENERATED_SECRET"
+```
+
+Gizli anahtarı `openssl rand -base64 32` ile üret. `DATABASE_URL` uygulama
+bağlantısıdır; `DIRECT_URL` migration çalıştırabilen bağlantıdır. Yerelde aynı
+adres olabilirler. Bağlantı havuzu kullanıyorsan migration adresinin DDL
+çalıştırabilmesi gerekir.
+
+```bash
+npx prisma migrate deploy
 npm run dev
 ```
 
-## Vercel'e deploy ederken eklemen gereken environment variable'lar
+Arayüz: `http://localhost:3000`. Kendi hesabını oluşturup panelden bir API
+anahtarı üretebilirsin. Hesap, yetenek izinleri ve kredi sayacı mevcut örnek
+API katmanının parçalarıdır; bunlar yerel veritabanında tutulur.
 
-Proje zaten deploy edildi, ama aşağıdakiler eklenmeden **Google ile giriş ve
-kredi sistemi çalışmaz** (site ve canlı arama demosu env olmadan da çalışır):
+Google ile giriş isteğe bağlıdır: kullanacaksan `GOOGLE_CLIENT_ID` ve
+`GOOGLE_CLIENT_SECRET` tanımla. E-posta/şifre ile giriş de vardır.
+`GITHUB_TOKEN`, GitHub arama sağlayıcısı için isteğe bağlıdır.
+`CRON_SECRET`, haber ve izleme zamanlayıcı uçlarını korur. Zamanlayıcıları kendi
+çalıştırma ortamında ayrıca kurmalısın.
 
-1. **Veritabanı** — iki değişken gerekir: uygulamanın çalışma anında
-   kullandığı `DATABASE_URL` (transaction pooler, port 6543) ve
-   migration'ların kullandığı `DIRECT_URL` (session pooler, port 5432).
-   Transaction modunda DDL çalıştırılamadığı için ikisi ayrı.
+Veritabanı olmadan saf hesaplama testleri ve kontrollü I/O testleri çalışır.
+Hesap ve anahtarla kullanılan HTTP API'si ise veritabanı gerektirir.
 
-   Supabase kullanıyorsan **ikisi de pooler üzerinden** gitmeli. Supabase'in
-   doğrudan adresi (`db.<ref>.supabase.co`) ücretsiz planda yalnızca IPv6
-   kaydına sahip, Vercel fonksiyonları ise IPv4 — doğrudan adres oradan
-   bağlanamaz. Bağlantı dizelerini Supabase panelinde **Connect** düğmesinden
-   alabilirsin.
+## API kullanımı
 
-   Tabloları ayrıca oluşturman gerekmez: `DATABASE_URL` ve `DIRECT_URL`
-   tanımlıyken build sırasında `prisma migrate deploy` otomatik çalışır
-   (`scripts/migrate.mjs`), tanımlı değilken atlanır.
+Aşağıdaki değişkeni kendi kurulumundan aldığın anahtarla tanımla:
 
-2. **Google OAuth** (opsiyonel, e-posta/şifre ile de kayıt olunabilir) — [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-   üzerinden bir OAuth Client ID oluştur (Web application). Authorized
-   redirect URI olarak şunu ekle:
-   ```
-   https://<vercel-domainin>/api/auth/callback/google
-   ```
-   Sonra Vercel'de şu env variable'ları ekle:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-
-3. **Auth secret** — güçlü bir gizli anahtar üret ve ekle:
-   ```bash
-   openssl rand -base64 32
-   ```
-   - `NEXTAUTH_SECRET` (veya `AUTH_SECRET`)
-
-4. **Arama sağlayıcı anahtarı gerekmiyor.** Arama tamamen açık indeksler
-   üzerinde çalışır; ödemeli bir sağlayıcıya bağımlılık yoktur.
-
-   Hangi kaynakların kullanıldığı tahminle değil ölçümle seçildi: deploy'un
-   kendi çıkış IP'lerinden yapılan testte DuckDuckGo'nun HTML ucu bot kontrol
-   sayfası, Mojeek / Reddit / Lobsters / searchmysite ise 403 döndürüyor, bu
-   yüzden listede yoklar — hiç cevap vermeyen bir sağlayıcı her sorguya sadece
-   zaman aşımı ekler.
-
-   Haberi **kendi haber odamız** karşılıyor: 22 yayıncı beslemesi (AA, TRT,
-   BBC Türkçe/World/Business/Tech, NTV, Hürriyet, DW, Guardian, NYT, NPR, AP,
-   Al Jazeera, CNBC, Yahoo Finance, Ars Technica, The Verge, TechCrunch,
-   Science Daily) arka planda çekilip bellekte tutulur, eşleştirme derlem
-   üzerinde yapılır. Ölçüldü: 580 haber, hepsi tarihli, eşleştirme 2 ms.
-   Google News'ten farkı, adreslerin gerçek makale adresleri olması — o yüzden
-   içerikleri okunabiliyor.
-
-   Haberde denenip **elenenler**: GDELT (anahtarsız küresel haber indeksi
-   olduğu için en umut vereni; her denemede 10 saniyede yanıt vermedi),
-   Reuters beslemesi (adres çözülmüyor), Sözcü (besleme boş ayrışıyor),
-   Bing ve Yahoo haber RSS'leri (kanal başlığı dışında öğe döndürmüyor).
-
-   Açık web'i **Marginalia** ve **mwmbl** karşılıyor. İkisi birden var çünkü
-   ikisi de tek başına güvenilir değil: Marginalia dakikalar arayla bir
-   sorguyu 202 ms'de yanıtladı, sonra aynısını 12 saniyede yanıtlayamadı.
-   Geri kalanı dikey kaynaklar (Wikipedia, Stack Exchange, GitHub, Hacker
-   News, Google News, akademik sorularda OpenAlex, paket sorularında npm).
-   Hepsi aynı anda sorgulanır ve sıralamaları RRF ile birleştirilir.
-
-   Denenip **elenenler** (hepsi datacenter IP'sinden ölçüldü): SearXNG
-   örnekleri JSON vermiyor ya da 403, Yep ve Qwant bot doğrulaması istiyor,
-   Ecosia/Startpage/PyPI ayrıştırılabilir sonuç döndürmüyor, dev.to kendi
-   arama parametresini yok sayıyor, Reddit/Mojeek/Lobsters 403.
-
-   > **Dürüst sınır.** "Tüm internet" tek bir ücretsiz kaynaktan gelmiyor;
-   > böyle bir kaynak datacenter IP'lerine açık değil. Kapsama, iki açık web
-   > indeksi + dikey kaynakların birleşimi kadardır. Bunu aşmanın gerçek yolu
-   > ya ücretli bir arama API'si ya da kendi tarayıcımızı residential IP'lerde
-   > çalıştırmak.
-
-   > **Lisans uyarısı.** Marginalia'nın herkese açık API'si **CC-BY-NC-SA 4.0**
-   > ile yayımlanıyor — atıf zorunlu ve **ticari kullanıma kapalı**. Clouda
-   > ücretli bir ürün olarak sunulacaksa bu kaynak için Marginalia ile ayrı bir
-   > izin/lisans konuşulması gerekir. Ticari kullanım netleşene kadar açık web
-   > katmanını ücretsiz kademeyle sınırlamak ya da devre dışı bırakmak gerekir.
-
-5. (Opsiyonel) `SIGNUP_FREE_CREDITS` — varsayılan 2000, değiştirmek istersen ekle.
-
-6. (Önerilen) `DIAG_TOKEN` — `/api/diag/selftest` ucunu korur. Bu uç, deploy'un
-   canlı internete karşı gerçekten çalışıp çalışmadığını içeriden ölçer: yedi
-   canlı veri türü, iki site haritası, arama, haber derlemi, sekiz MCP aracı ve
-   beş protokol iddiası — toplam 27 kontrol.
-
-   Tanımlamazsan yedek bir token kullanılır ve **o token herkese açık depoda
-   duruyor**; saatte 12 istekle sınırlı ve yalnızca okuma yapıyor, ama kendi
-   değerini tanımlaman daha doğru. Yanıt, yedek token kullanılıyorsa bunu
-   `warning` alanında söyler.
-
-Hepsini ekledikten sonra Vercel'de **Redeploy** yap. Kurulumun doğru olup
-olmadığını tek istekle görebilirsin:
-
-```
-https://<vercel-domainin>/api/health
+```bash
+export CLOUDA_API_KEY="YOUR_API_KEY"
+curl http://localhost:3000/api/v1/search \
+  -H "Authorization: Bearer $CLOUDA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"postgres index bloat","max_results":5,"include_content":false}'
 ```
 
-Her bağımlılığı ayrı ayrı raporlar; `ready: true` dönerse kayıt ve giriş
-çalışıyor demektir. Veritabanına bağlanamıyorsa hatanın kendisini gösterir.
-
-## Giriş / kayıt
-
-İki yöntem var:
-
-- **Google ile** — `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` gerekir.
-- **E-posta + şifre** — ek bir servis gerekmez; şifreler bcrypt ile hash'lenip
-  `User.passwordHash` alanında saklanır.
-
-Kayıt sırasında hesap türü sorulur (**bireysel** / **kurumsal**); kurumsalda
-kurum adı da alınır. Google ile gelen kullanıcılar bu soruyu ilk girişte
-`/onboarding` ekranında yanıtlar. Oturumlar JWT tabanlıdır (credentials
-sağlayıcısı bunu gerektirir), kullanıcı kayıtları yine Prisma'da tutulur.
-
-## API
-
-`Authorization: Bearer cld_live_...` başlığıyla çağrılır. Arama 2 kredi,
-sayfa içeriği istenmediğinde 1. Detaylar `/docs` sayfasında.
-
-| Uç nokta | Ne yapar |
+| Seçenek | Davranış |
 | --- | --- |
-| `POST /api/v1/search` | Arama, içerik çıkarımı, kalite skorları |
-| `POST /api/v1/search/batch` | Tek istekte 10 sorguya kadar paralel arama |
-| `POST /api/v1/news` | 22 yayıncı beslemesinden canlı haber; sorgu opsiyonel |
-| `POST /api/v1/data` | Hava, kur, kripto, hisse, deprem, ülke, gösterge — sayı olarak |
-| `POST /api/v1/map` | Bir sitenin bütün adresleri, kendi site haritasından |
-| `POST /api/v1/rerank` | Kendi belgelerini sıralar (BM25 + MMR), ağ kullanmaz |
-| `POST /api/v1/chunk` | Metni başlık yapısını koruyarak parçalara böler |
-| `POST /api/mcp` | MCP sunucusu — sekiz araç, ajan doğrudan bağlanır |
-| `GET /api/v1/openapi` | Makine tarafından okunabilir OpenAPI 3.1 şeması |
-| `POST /api/v1/answer` | Kaynaklı, alıntıya dayalı cevap |
-| `POST /api/v1/extract` | Elindeki adresleri modele hazır metne çevirir |
-| `POST /api/v1/research` | Çok turlu araştırma, kaynaklı rapor |
-| `POST /api/v1/browse` | Sayfa açar, bağlantı takip eder |
-| `POST /api/v1/social` | Mastodon, Lemmy, YouTube |
-| `POST /api/v1/monitors` | Değişiklik izler, webhook gönderir |
-| `GET /api/v1/usage` | Kullanım ve performans metrikleri |
+| `search_depth: "fast" / "balanced" / "deep"` | Gecikme ve kaynak kapsamı bütçesini seçer; varsayılan `balanced`. |
+| `include_content: false` | Sayfa indirmez; başlık, URL ve snippet döndürür. |
+| `include_content: true` | Seçilen sayfalardan okunabilir metin çıkarmayı dener. |
+| `freshness: "day"` | Bilinen yayın tarihi son 24 saatin dışında olan sonuçları eler. |
+| `include_domains` / `exclude_domains` | Adayları indirme ve birleştirme öncesinde süzer. |
+| `no_cache: true` | Yanıt ve sağlayıcı önbelleklerini okumaz veya yazmaz. |
+| `mode: "sources"` | İçerik indirmeden kaynak biçiminde yanıt verir. |
 
-## Gecikme
+Tarihi bilinmeyen bir sonuç güncel olduğu iddiasıyla etiketlenmez; tarih alanı
+`null` kalır. `degraded_providers`, yanıt vermeyen veya son kayıtlı yanıtıyla
+kullanılan kaynakları açıklar. Ayrıntılı istek/yanıt şeması çalışan uygulamanın
+`/api/v1/openapi` ve `/docs` adreslerindedir.
 
-Ölçülen (Frankfurt bölgesi, production):
+MCP istemcisini `http://localhost:3000/api/mcp` adresine, aynı Bearer anahtarıyla
+bağla. Araç adları ve giriş şemaları `tools/list` yanıtından keşfedilir;
+uygulamaları `lib/mcp/tools.ts` içindedir.
 
-| Durum | Süre |
-| --- | --- |
-| Önbellekten | ~23 ms |
-| Taze arama (içerik çıkarımıyla) | ~1,4 sn |
-| Taze arama (`include_content: false`) | ~0,7 sn |
+## Kaynak kapsamı
 
-Önbelleksiz bir aramanın 300 ms'ye inmesi mümkün değil: yedi dış kaynağa
-sorup sayfaları canlı indirmek tek başına bundan uzun sürer. Ağ gidiş
-dönüşleri tabandır. Bunun yerine iş azaltıldı:
+Marginalia ve Mwmbl genel web indekslerini; Wikipedia/Wikidata, teknik kaynaklar,
+akademik arşivler, paket kayıtları ve 22 yayıncı beslemesi konuya özel kapsamı sağlar.
+Marginalia entegrasyonu güncel `api2.marginalia-search.com` API'sini kullanır.
+Ortak `public` anahtarının sınırlarına bağlıdır; kendi anahtarını
+`MARGINALIA_API_KEY` ile tanımlayabilirsin.
 
-- Adaylar indirilmeden önce ucuz sinyallerle sıralanıp yalnızca kazananlar
-  getiriliyor; bir arama en fazla 5 sayfa indirir.
-- `news.google.com` bağlantıları hiç indirilmez — onlar sayfa değil base64
-  yönlendirme sarmalayıcısı, hiçbir zaman içerik çıkmıyor. Stack Exchange
-  ailesi de indirilmiyor: ölçüldü, stackoverflow.com ve serverfault.com bu
-  deploy'dan **160 ms'de sıfır karakter** döndürüyor — zaman aşımı olamayacak
-  kadar hızlı, yani ret. API'lerinden gelen snippet zaten soru ve cevap
-  metnini taşıyor.
-- İçerik çıkarımının gerçek süresi ölçüldü: çıkarılabilen sayfa 358-891 ms
-  arasında çıkıyor, ortancası 588 ms. Bütçe buna göre ayarlandı (aşama için
-  1,4 sn, tek sayfa için 1 sn). Önceki 1,2 sn keşiften sonra ~600 ms
-  bırakıyordu: her indirmeyi başlatmaya yetiyor, hiçbirini bitirmeye
-  yetmiyordu — yani bütçe harcanıyor, sonuçlar yine snippet'e düşüyordu.
-- Her kaynağın kendi süresi var (web indeksi 700 ms, dikey 600 ms) ve süreyi
-  kaçıran kaynak o sorgu için **son bilinen yanıtıyla** temsil ediliyor —
-  yani süreyi kısmak kapsama kaybı anlamına gelmiyor.
-- İçerik çıkarımı isteğin başından itibaren 1,2 sn'lik mutlak bir bütçeye
-  karşı çalışıyor; yetişmeyen sayfa kendi snippet'ine düşüyor.
-- Keşif, dört kaynak yanıtladığı anda kesiliyor — süresini doldurmayı beklemek
-  yerine. Kesilen kaynak, süreyi kaçıran kaynakla aynı yolu izliyor (son bilinen
-  yanıtı kullanılıyor), yani tasarruf beklemekten geliyor, kapsamdan değil.
-- İlk yanıtlayan kaynağın en iyi adayları, fan-out sürerken indirilmeye
-  başlıyor: iki bekleme aşaması art arda değil, üst üste çalışıyor.
-- Yanıt önbelleğine yazma, kullanım kaydı ve önbellek sayacı yanıt yolundan
-  çıkarıldı (`after()`), yani çağıran bizim defter tutmamızı beklemiyor.
-- Haber derlemi istek anında değil arka planda tazeleniyor; haber sorgusu
-  bellekten yanıtlanıyor.
+Daha geniş bir arama havuzu için işlettiğin SearXNG sunucusunun adresini
+`SEARXNG_BASE_URL` ile ekle. Sunucuda JSON çıktısı etkin olmalı; yalnızca kamuya
+açık HTTP(S) adresleri kabul edilir. Yapılandırılmadığında bu kaynak etkin değildir.
+SearXNG'nin kullandığı motorları ve erişim koşullarını sunucu işletmecisi belirler.
+[Resmî arama API'si](https://docs.searxng.org/dev/search_api.html).
 
-`include_content: false` gönderirsen sayfa hiç indirilmez; hem yaklaşık iki
-kat hızlıdır hem de tam ücret yerine keşif ücreti düşer.
+| Profil | İlk kaynak dalgası | Keşif: web / dikey | Kurtarma üst sınırı | İçerik son sınırı / sayfa sınırı |
+| --- | --- | --- | --- | --- |
+| `fast` | 3 kaynak; gerekirse 80 ms sonra diğerleri | 450 / 350 ms | 700 ms | 1000 ms / 3 |
+| `balanced` | 4 kaynak; gerekirse 120 ms sonra diğerleri | 700 / 600 ms | 1200 ms | 1400 ms / 5 |
+| `deep` | Uygun tüm kaynaklar | 1800 / 1600 ms | 2500 ms | 3500 ms / 8 |
 
-## Güvenilirlik
+Keşif/kurtarma süreleri keşfin, içerik son sınırı aramanın başlangıcından ölçülür.
+`fast` ve `balanced` yeterli ilgili ve benzersiz sonuçla ek kaynak dalgasını atlar.
+`deep`, sonuca katkı yapabilecek geç kaynakları da bütçesi içinde bekler.
+Hiçbiri bütün interneti eksiksiz taradığı veya her kaynağın o an erişilebilir
+olduğu anlamına gelmez.
 
-Fan-out zaten başarısız bir kaynağa dayanıklıydı ama ondan **öğrenmiyordu**: son
-beş çağrısında başarısız olan bir kaynak yine her sorguda soruluyor ve o sorguya
-yine tam süresini ödetiyordu. Artık üst üste dört başarısızlıktan sonra kaynak
-rotasyondan çıkıyor, sonra tek tek deneme istekleriyle geri alınıyor; başarısızlık
-sürdükçe bekleme süresi katlanıyor. Boş yanıt açıkça başarısızlık sayılmıyor —
-sayılsaydı, sıra dışı bir sorgu devreyi açardı.
+Yanıttaki `diagnostics`, derinliği, başlatılan sağlayıcı görevlerini,
+sonuç veren sağlayıcıları, birleştirilen adayları, sayfa indirmelerini ve sonuç
+alan adı sayısını gösterir. Sağlayıcı görevleri ortak yürütülebilir ve bir görev
+birden fazla HTTP isteği yapabilir; bu sayaç elektrik tüketimi ölçümü değildir.
+Yanıt önbelleği isabetinde yeni iş sayaçları sıfırdır; `provider` saklanan yanıtın
+kaynak bilgisini korur.
 
-`/api/health` bu karneyi raporlar: kaynak başına başarı oranı, ortalama gecikme,
-açık devreler. Bu tablo yalnızca o sunucu örneğinin gördüklerini yansıtır ve
-soğuk başlangıçta sıfırlanır — paylaşımlı bir devre kesici, kaynak başına bir
-veritabanı gidiş dönüşü demek olurdu ki kazandırdığından fazlasını götürürdü.
-Kalıcı olan taraf, paylaşımlı ve ayakta kalan sağlayıcı önbelleğidir.
+## Arama gecikmesi ve dayanıklılık
 
-## Test
+- Aynı anda gelen eşdeğer sorgular aynı sunucu örneğinde ortak yürütülür.
+  Arama derinliği, içerik modu, güncellik aralığı, sonuç sayısı ve alan adı izinleri farklıysa
+  yanıt önbelleği ayrılır.
+- Güncellik isteyen sorgular da bellek önbelleğini kullanır. Veritabanı
+  önbellek okuması 60 ms bütçesini aşarsa arama ilerler; bekleyen okuma sayısı
+  sınırlıdır ve aynı anahtarın okumaları birleştirilir.
+- Başlatılan sağlayıcıların canlı çağrıları ve son yanıt okumaları paralel başlar.
+  Varsayılan `balanced` profilinde keşif bütçesi
+  dikey kaynaklarda 600 ms, genel web kaynaklarında 700 ms'dir. Yeterli uygun
+  kaynak ve sonuç geldiğinde erken tamamlanır.
+- İlk aşamada hiçbir sonuç gelmezse keşfin başlangıcından itibaren en fazla
+  1200 ms'lik kurtarma penceresi kullanılır. Kaynak çalışmaları en fazla
+  2500 ms sürer; geç gelen işler önbelleği doldurmak için arka planda tamamlanır.
+- Varsayılan içerik çıkarımı aramanın başlangıcından itibaren 1400 ms bütçeye sahiptir.
+  Tek sayfanın HTTP bütçesi en fazla 1000 ms'dir. Spekülatif indirmeler dahil
+  en fazla **5 sayfa** başlatılır; yetişmeyenler snippet ile döner.
+- HTTP süre sınırı yönlendirmeler ve yanıt gövdesi boyunca ortaktır.
+  Kaynak doğrulama sayfaları veya HTTP hata sayfaları makale diye sunulmaz.
+- Eşzamanlı haber yenilemeleri aynı süreçte tek işi paylaşır. ETag / Last-Modified
+  koşullu istekleri destekleyen beslemelerde değişmeyen gövde tekrar indirilmez.
+  Başarısız yenilemede en fazla bir saatlik son doğrulanmış besleme korunur;
+  makalenin yayın tarihi değişmez.
+- Gerçek sağlayıcı hataları devre kesiciye kaydedilir. Geçerli ama boş bir
+  yanıt hata sayılmaz; birleşik sağlayıcının çalışan alt kaynağı korunur.
+
+Bunlar uygulama içi bekleme bütçeleridir. API'nin toplam `took_ms` değeri kimlik
+doğrulama, kredi işlemleri ve çalışma ortamının maliyetlerini de içerir.
+İnternet gecikmesi, soğuk başlangıç ve kaynak kapsaması için sabit bir ms
+veya sonuç sayısı garantisi yoktur.
+
+### Tekrarlanabilir yerel ölçüm
+
+```bash
+npm run benchmark:search
+```
+
+Benchmark gerçek arama/önbellek kodunu, kontrollü sağlayıcı ve veritabanı
+gecikmeleriyle çalıştırır. Her senaryo beş kez ölçülür; p50, p95, dış çağrı
+sayısı ve sonuç sayısı yazdırılır. **Canlı internet veya üretim ölçümü değildir.**
+
+İlk karşılaştırma, Node.js 24 ortamında `e8611d5` ile aynı arama koduna sahip
+başlangıç sürümüne karşı alınmıştır:
+
+| Senaryo | Önce p50 | Sonra p50 | Sonuç sayısı |
+| --- | ---: | ---: | --- |
+| Hızlı sağlayıcılar, önbelleksiz | 26,7 ms | 26,7 ms | 10 → 10 |
+| Güncellik önbelleğinin tekrar kullanımı | 60,5 ms | 0,2 ms | 10 → 10 |
+| Yavaş veritabanı önbelleği | 326,2 ms | 86,7 ms | 10 → 10 |
+| Tüm kaynaklar yavaş | 2402,6 ms | 1201,5 ms | 10 → 9 |
+
+On eşzamanlı aynı sorguda sağlayıcı çağrıları **40'tan 4'e** iner; toplam
+100 sonuç korunur. Yavaş kaynak senaryosundaki hızlanmanın bir kısmı, son
+kaynağı beklemeyi bırakmaktan gelir: bu örnekte bir sonuç eksiktir. Benchmark
+sonuç sayısını bu farkı görünür tutmak için de raporlar.
+
+Ek regresyon senaryosunda sekiz hızlı sağlayıcıdan `balanced` yalnızca dördünü
+çağırarak 10 sonuç verir; `deep` sekizini de sorgular. Yirmi eşzamanlı haber
+refresh'i 22 besleme için toplam 22 çağrıya birleşir. Bunlar kontrollü I/O
+ölçümleridir; üretimdeki kapsamı ve enerji tüketimini temsil etmez.
+
+## Test ve derleme
 
 ```bash
 npm test
+npm run typecheck
+npm run build
+npm start
 ```
 
-Ürünün ağ ve veritabanı olmadan test edilebilen tek parçaları sıralama ve
-parçalama modülleri, dolayısıyla gerçek testleri olan tek parçalar onlar. Testler
-karşılığını hemen verdi:
+`npm test` ağ veya gerçek veritabanı kullanmaz. Saf modüller derlenerek test
+edilir; entegrasyon testleri gerçek TypeScript modüllerini yükleyip yalnızca
+I/O sınırlarını denetimli karşılıklarla değiştirir. Önbellek ayrımı, eşzamanlı
+istekler, alan adı filtreleri, güncellik, süre sınırları ve hata toparlanması
+bu kapsamda doğrulanır.
 
-- MMR, indeks şişmesi sorusuna makarna tarifi döndürdü. Hiçbir sorgu terimi
-  içermeyen bir belgenin tekrar edecek bir şeyi yoktur, yani yenilik skoru
-  kusursuz sıfırdır — ve güçlü bir çeşitlilik ağırlığına karşı sıfır, gerçek her
-  adayın cezasını yener. Alakasızlık çeşitlilik değildir.
-- `running` → `runn` olup `run` ile eşleşmiyordu; `address` sondaki s'sini
-  kaybedip `addresses` ile eşleşmiyordu; `queries` → `quer` hiçbir şeyle
-  eşleşmiyordu.
+Mevcut `build` komutu veritabanı değişkenleri tanımlıysa migration betiğini de
+çalıştırır. Migration'ı derlemeden ayrı yönetmek için `npx prisma generate` ve
+`npx next build` komutlarını kullanabilirsin. Bir Node.js sunucusunda
+`npm start` ile çalıştırmak yeterlidir; belirli bir barındırma hizmeti zorunlu değildir.
 
-## Kendi kendini test etme
+`/api/diag/selftest`, yapılandırılmış gizli anahtarla korunan canlı kontrol
+ucudur. Unit test değildir; üçüncü taraf erişimini kullandığı için zaman ve
+çalıştırma ortamına bağlıdır. Kaynak sağlığı ve bellek önbelleği her süreçte
+ayrıdır; çoklu süreçlerde bu durum ortak bir küresel karne değildir.
 
-```
-https://<vercel-domainin>/api/diag/selftest?token=<DIAG_TOKEN>
-```
+## Katkı
 
-Yeni uçların hepsi bir API anahtarının arkasında POST olduğu için dışarıdan
-GET ile doğrulanamıyor. Bu uç, aynı modül fonksiyonlarını içeriden çağırır ve
-anahtar gerektirmeyen MCP metotlarına kendi adresimizden gerçek JSON-RPC
-gönderir. Ölçülen son çalıştırma: **27/27, 2,4 sn**.
+Yeni arama sağlayıcısı için `lib/search/providers.ts` içindeki `Provider`
+sözleşmesini uygula ve uygun sorgu türlerinin listesine ekle. Çıktıların başlık,
+URL ve snippet içermeli; yayın tarihi bilinmiyorsa `null` kullan. Gerçek
+sağlayıcı hataları ile geçerli boş sonuçları ayır ve süre sınırlarına uy.
 
-Yakaladığı hatalar, yalnızca canlı yanıtta görünen türden: `/api/v1/answer`
-bir Stack Overflow **sorusunu** cevap diye alıntılıyordu — soru sayfasında en
-konuyla ilgili metin sorunun kendisidir, dolayısıyla altındaki gerçek
-cevaplardan yüksek puan alır.
+Değişiklikle ilgili regresyon testini ekle, `npm test` ve `npm run typecheck`
+çalıştır. Performans değiştiriyorsan gecikmenin yanında sonuç sayısını ve dış
+istek sayısını da karşılaştır.
 
-## Notlar / sonraki adımlar
+## Sınırlar ve lisans
 
-- Arama motoru `lib/search/engine.ts` içinde zincir değil, **paralel** çalışır:
-  niyete uyan bütün kaynaklar aynı anda sorgulanır, sıralamaları reciprocal
-  rank fusion ile birleştirilir. Birden fazla indeksin bağımsız olarak öne
-  çıkardığı sayfa yukarı taşınır — bir toplayıcının elindeki en güçlü sinyal
-  budur. Hangi kaynakların cevap verdiği yanıttaki `source` alanında, cevap
-  vermeyenler ise `degraded_providers` içinde görünür.
-- Aynı ana bilgisayardan en fazla iki sonuç başa alınır, böylece tek bir site
-  ilk sayfayı doldurmaz.
-- Sonuç bulunduktan sonra her sayfa sunucu tarafında indirilip okunabilir
-  metne dönüştürülür (`fetchPageContent`) — ürünün asıl katma değeri burası.
-- `lib/search/safety.ts` yetişkin içerik filtresi, sağlayıcının kendi
-  güvenli arama bayrağının arkasındaki ikinci katman.
-- Kredi/kullanıcı verisi olmadan (DB bağlanmadan) site ve ana sayfadaki canlı
-  arama demosu sorunsuz çalışır; sadece giriş ve panel DB gerektirir.
+Arama kapsamı açık web indeksleri ve dikey sağlayıcıların birleşimi kadardır.
+Sağlayıcı erişimi ve veri koşulları zamanla değişebilir. Dış hizmetlerin
+lisansları, projenin kaynak kodu lisansından ayrıdır; örneğin Marginalia için
+[sağlayıcının API açıklamasını](https://about.marginalia-search.com/article/api/)
+kontrol et.
+
+URL kontrolleri protokol, alan adı ve özel IP literal kısıtları uygular.
+DNS yanıtlarını bağlantıya sabitlemez; güvenilmeyen URL'lerle kamuya açık bir
+kurulumda ağ düzeyinde çıkış kısıtları ayrıca uygulanmalıdır.
+
+Kaynak kodu lisansı: [GNU GPL v3](LICENSE).

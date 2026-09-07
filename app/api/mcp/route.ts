@@ -1,3 +1,4 @@
+import { CLOUDA_RELEASE } from "@/lib/version";
 import { NextRequest, NextResponse } from "next/server";
 import {
   ApiContext,
@@ -39,8 +40,8 @@ const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const SERVER_INFO = {
   name: "clouda",
-  title: "Clouda Web Intelligence",
-  version: "1.0.0",
+  title: CLOUDA_RELEASE.name,
+  version: CLOUDA_RELEASE.version,
 };
 
 /** JSON-RPC error codes: the four standard ones plus our own range. */

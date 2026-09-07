@@ -1,12 +1,14 @@
 {
   "name": "clouda",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && node scripts/migrate.mjs && next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "benchmark:search": "node scripts/benchmark-search.mjs",
     "postinstall": "prisma generate",
     "test": "tsc -p tsconfig.test.json && node --test tests/*.test.mjs"
   },

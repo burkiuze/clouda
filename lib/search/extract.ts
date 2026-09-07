@@ -152,14 +152,16 @@ export function parsePage(res: FetchResult): ExtractedPage {
 /** Fetches and extracts a page, returning null when it cannot be read. */
 export async function fetchAndExtract(
   url: string,
-  options: { policy?: DomainPolicy; timeoutMs?: number } = {}
+  options: { policy?: DomainPolicy; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<ExtractedPage | null> {
   try {
     const res = await safeFetch(url, {
       policy: options.policy,
       timeoutMs: options.timeoutMs ?? 3500,
+      signal: options.signal,
       headers: { Accept: "text/html,application/xhtml+xml" },
     });
+    if (res.status < 200 || res.status >= 300) return null;
     if (!res.contentType.includes("html") && !res.contentType.includes("text/plain")) return null;
     return parsePage(res);
   } catch {

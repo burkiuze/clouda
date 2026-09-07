@@ -1,13 +1,13 @@
-import { cacheGet, cacheSet, ttlForIntent } from "@/lib/core/cache";
+import { cacheGet, cacheSet, cacheKey, ttlForIntent } from "@/lib/core/cache";
 import { offload } from "@/lib/core/offload";
 import { circuitOpen, recordFailure, recordSuccess } from "@/lib/core/breaker";
 import { CloudaError } from "@/lib/core/errors";
 import { filterUnsafe } from "@/lib/search/safety";
-import { hostMatches } from "@/lib/core/security";
+import { hostMatches, isUrlAllowed } from "@/lib/core/security";
 import { fetchAndExtract } from "@/lib/search/extract";
 import { planQuery } from "@/lib/search/query";
 import { scoreResult, MIN_USEFUL_RELEVANCE } from "@/lib/search/scoring";
-import { openProvidersForIntent, Provider } from "@/lib/search/providers";
+import { openProvidersForIntent, searchProvider, Provider } from "@/lib/search/providers";
 import type {
   QueryPlan,
   RawResult,
@@ -16,62 +16,32 @@ import type {
   SearchResult,
 } from "@/lib/search/types";
 
+import { within, SingleFlight } from "@/lib/core/async";
+import { withFetchSignal } from "@/lib/core/http";
+import { SEARCH_PROFILES } from "@/lib/search/profiles";
+
 export const DEFAULT_LOCALE = "tr-TR";
 
 /**
  * The search pipeline, in four stages:
  *
  *   plan       classify intent, clean the query, decide on freshness
- *   discover   ask every source that suits the intent at once and fuse their
- *              rankings; each failure is recorded rather than swallowed
+ *   discover   ask suitable sources in bounded waves and fuse their rankings;
+ *              each failure is recorded rather than swallowed
  *   enrich     fetch each candidate and extract readable text plus real dates
  *   score      attach relevance/credibility/freshness/overall, re-rank, and
  *              spread the head across hosts
  *
- * There is no paid provider and no key: discovery runs on open indexes only.
+ * Discovery uses open indexes and an optional operator-configured backend.
  *
  * Results are cached by normalised query, with the freshness window part of
  * the cache contract so a "last hour" request never gets a day-old row.
  */
 
-/**
- * Latency budget.
- *
- * Nearly all of a search's wall clock is spent waiting on other people's
- * servers, so the only real levers are how many of them we wait for and how
- * long we are willing to wait. Every candidate used to be downloaded before
- * ranking, which meant paying for a dozen page fetches to publish six results.
- * Candidates are now ranked on title and snippet first — signals the providers
- * already gave us, costing nothing — and only the survivors are fetched.
- */
-const MAX_ENRICH_CONCURRENCY = 12;
-
-/** Pages fetched beyond the requested count, as insurance against dead links. */
+/** Fetch only the best candidates, within the selected profile budget. */
 const ENRICH_HEADROOM = 1;
 
-/**
- * Ceiling on how many pages one search downloads. Extraction is the whole cost
- * of a search, and the value of the Nth page falls off fast — the results
- * below this line keep the snippet their source already returned, which is
- * what they would have fallen back to on a timeout anyway.
- */
-const MAX_FETCHES = 5;
-
-/**
- * Hosts a fetch cannot get anything out of, so they are never fetched.
- *
- * Google News RSS items are base64 redirect stubs rather than pages: one costs
- * a full round trip and consistently extracts nothing, which is exactly the
- * "içerik-çıkarılamadı" signal those results kept carrying.
- *
- * The Stack Exchange family is here for a different reason, and it was
- * measured: stackoverflow.com and serverfault.com both return zero characters
- * in about 160ms from this deployment — far too fast to be a timeout, so it is
- * a refusal, the same datacenter-IP wall that keeps their search out of the
- * provider list. Their API already gives us the question and top answer text
- * as a snippet, which is what those results were falling back to anyway; now
- * they fall back to it without spending a fetch out of the budget first.
- */
+/** These hosts generally supply snippets rather than extractable pages. */
 const UNEXTRACTABLE = [
   /(^|\.)news\.google\.com$/i,
   /(^|\.)stackoverflow\.com$/i,
@@ -89,25 +59,7 @@ function isUnextractable(url: string): boolean {
   }
 }
 
-/**
- * Wall-clock cut-off for content extraction, measured from the start of the
- * request. Discovery has already spent part of the budget by the time this
- * stage runs, so it is an absolute deadline rather than a per-stage timeout.
- *
- * Set from measurement, not preference. A page that extracts at all does so in
- * 358-891ms from this deployment, p50 588ms. The previous 1.2s left barely
- * 600ms after discovery — enough to start every fetch and finish none, which
- * is the worst of both: a search that spent its whole budget and returned
- * every result on its snippet. The stage still ends the moment its fetches
- * resolve, so this ceiling only costs time on searches that were going to use
- * it.
- */
-const ENRICH_DEADLINE_MS = 1400;
-
-/**
- * Ceiling on a single page fetch. Nothing measured here has extracted past
- * 891ms, so a page still running at a second is not slow, it is stuck.
- */
+/** One page cannot spend the entire search budget. */
 const PAGE_TIMEOUT_MS = 1000;
 
 /**
@@ -118,19 +70,7 @@ const PAGE_TIMEOUT_MS = 1000;
 const CANDIDATE_MULTIPLIER = 2;
 const MIN_CANDIDATES = 10;
 
-/**
- * Discovery stops early once this many sources have answered with something.
- *
- * The fan-out used to be paid for at the price of its slowest member every
- * time: with six sources answering in 150ms, the request still sat until the
- * deadline for the seventh. A source cut short here is not dropped — it takes
- * the same stale-cache path as a source that missed the deadline, so the
- * saving is in waiting, not in coverage.
- *
- * The floor exists because Marginalia has been measured answering in 202ms;
- * exiting before that would cut the open web off on every fast query.
- */
-const EARLY_EXIT_PROVIDERS = 4;
+/** Give active sources a short window before ending their foreground wait. */
 const EARLY_EXIT_FLOOR_MS = 220;
 
 /**
@@ -219,12 +159,12 @@ function urlKey(raw: string): string {
     url.hash = "";
     // Campaign parameters change nothing about the page.
     for (const p of [...url.searchParams.keys()]) {
-      if (/^(utm_|fbclid|gclid|ref|source$)/i.test(p)) url.searchParams.delete(p);
+      if (/^(utm_.*|fbclid|gclid)$/i.test(p)) url.searchParams.delete(p);
     }
     const path = url.pathname.replace(/\/+$/, "");
-    return `${url.hostname.replace(/^www\./, "")}${path}${url.search}`.toLowerCase();
+    return `${url.protocol}//${url.host.replace(/^www\./, "")}${path}${url.search}`;
   } catch {
-    return raw.replace(/\/+$/, "").toLowerCase();
+    return raw.replace(/\/+$/, "");
   }
 }
 
@@ -245,8 +185,11 @@ function fuseByRank(lists: { name: string; results: RawResult[] }[], limit: numb
   const scores = new Map<string, { score: number; item: RawResult; sources: Set<string> }>();
 
   for (const list of lists) {
+    const seen = new Set<string>();
     list.results.forEach((item, rank) => {
       const key = urlKey(item.url);
+      if (seen.has(key)) return;
+      seen.add(key);
       const entry = scores.get(key);
       const contribution = 1 / (RRF_K + rank + 1);
 
@@ -288,247 +231,164 @@ function relevanceGate(results: RawResult[], plan: QueryPlan): RawResult[] {
   });
 }
 
-/**
- * How long the fan-out is given before the results in hand are used.
- *
- * Split by tier, because the two are not worth the same wait. Dropping a
- * vertical costs one slice of the web; dropping both general indexes costs the
- * web itself — a uniform 1.5s cut Marginalia off and left a technical question
- * answered by Wikipedia and Stack Overflow alone. Verticals are fast APIs, so
- * one that has not answered in 1.5s is in trouble rather than being thorough.
- */
-const DISCOVERY_DEADLINE_MS = { web: 700, vertical: 600 } as const;
+/** A slow source may warm its cache, but cannot run forever. */
+const PROVIDER_WORK_TIMEOUT_MS = 2500;
+const PROVIDER_CACHE_TTL_SECONDS = 900;
 
-/**
- * Resolves with the promise's value, or null once `ms` has passed. The loser
- * is left running rather than cancelled — it is still doing useful work for
- * the provider cache — but its timer is cleared so it cannot hold the process.
- */
-function raceDeadline<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  if (ms <= 0) return Promise.resolve(null);
-
-  let timer: ReturnType<typeof setTimeout>;
-  const expiry = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
-  });
-
-  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer));
-}
-
+interface ProviderOutcome { results: RawResult[]; reason?: string; skipped?: boolean }
 interface DiscoveryOutcome {
   results: RawResult[];
   provider: string;
+  providersQueried: number;
+  providersWithResults: number;
   degraded: { provider: string; reason: string }[];
 }
+const providerFlights = new SingleFlight<ProviderOutcome>();
 
-/**
- * How long one source's raw answer stays reusable. Short, because this is not
- * the answer cache — it exists so that a source having a bad minute does not
- * remove its whole slice of the web from the results.
- */
-const PROVIDER_CACHE_TTL_SECONDS = 900;
-
-function providerLookup(provider: Provider, query: string, locale: string) {
-  return { namespace: `provider:${provider.name}`, query, locale };
+function providerLookup(provider: Provider, query: string, locale: string, limit: number, freshnessHours?: number | null) {
+  return { namespace: "provider:" + provider.name, query, locale, maxResults: limit, freshnessHours };
 }
 
-/**
- * Runs one source, remembering what it last said.
- *
- * Marginalia measurably answered a query in 202ms and then failed to answer
- * the same one at all minutes later. Without this, every such minute silently
- * removed the open web from the results and the user saw only verticals. A
- * recent answer from a source that is currently unreachable is far better than
- * no answer from it, so its last reply stands in — and is reported as stale
- * rather than passed off as fresh.
- */
-async function runProvider(
-  provider: Provider,
-  query: string,
-  limit: number,
-  locale: string,
-  freshnessHours: number | null | undefined,
-  degraded: { provider: string; reason: string }[]
-): Promise<RawResult[]> {
-  const lookup = providerLookup(provider, query, locale);
+/** Only accepted candidates count towards early exit or speculative downloads. */
+function accepted(results: RawResult[], options: SearchOptions, freshnessHours?: number | null): RawResult[] {
+  const cutoff = freshnessHours == null ? null : Date.now() - freshnessHours * 3_600_000;
+  return applyDomainFilter(filterUnsafe(results), options.domainFilter).filter((r) => {
+    if (!isUrlAllowed(r.url, options.domainPolicy)) return false;
+    const date = r.publishedAt ? Date.parse(r.publishedAt) : NaN;
+    return cutoff === null || !Number.isFinite(date) || date >= cutoff;
+  });
+}
 
-  const fallback = async (reason: string): Promise<RawResult[]> => {
-    const cached = await cacheGet<RawResult[]>(lookup);
-    if (cached && cached.payload.length > 0) {
-      degraded.push({ provider: provider.name, reason: `${reason} (son yanıtı kullanıldı)` });
-      return cached.payload.slice(0, limit);
+function runProvider(
+  provider: Provider, query: string, limit: number, locale: string,
+  freshnessHours: number | null | undefined, noCache: boolean
+): Promise<ProviderOutcome> {
+  const lookup = providerLookup(provider, query, locale, limit, freshnessHours);
+  return providerFlights.run(cacheKey(lookup) + (noCache ? ":uncached" : ""), async () => {
+    const circuit = circuitOpen(provider.name);
+    if (circuit.open) return { results: [], reason: circuit.reason ?? "circuit_open" };
+    const started = Date.now();
+    const controller = new AbortController();
+    try {
+      const result = await within(
+        withFetchSignal(controller.signal, () => searchProvider(provider, query, limit, locale, freshnessHours)),
+        PROVIDER_WORK_TIMEOUT_MS
+      );
+      if (result === null) throw new CloudaError("fetch_timeout", "provider_timeout");
+      const results = result.filter((r) => r && typeof r.url === "string" &&
+        typeof r.title === "string" && typeof r.snippet === "string");
+      recordSuccess(provider.name, Date.now() - started);
+      if (results.length === 0) return { results, reason: "no_results" };
+      if (!noCache) {
+        void cacheSet(lookup, results, PROVIDER_CACHE_TTL_SECONDS, { background: true });
+      }
+      return { results };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message.slice(0, 100) : "failed";
+      recordFailure(provider.name, reason);
+      return { results: [], reason };
+    } finally {
+      controller.abort();
     }
-    degraded.push({ provider: provider.name, reason });
-    return [];
-  };
-
-  // A source that has failed repeatedly is not asked at all. Without this a
-  // source being down cost every query its full deadline; now it costs one
-  // query per cooldown. Its last answer still stands in, so the result set is
-  // no thinner than it would have been.
-  const circuit = circuitOpen(provider.name);
-  if (circuit.open) return fallback(circuit.reason ?? "circuit_open");
-
-  const startedAt = Date.now();
-
-  try {
-    const results = await provider.search(query, limit, locale, freshnessHours);
-    if (results.length === 0) {
-      // An empty answer is not a failure: the source worked and had nothing.
-      // Counting it as one would break the circuit on an obscure query.
-      recordSuccess(provider.name, Date.now() - startedAt);
-      return fallback("no_results");
-    }
-
-    // Deliberately not awaited: this write only matters to a later request,
-    // and the extraction stage that follows gives it ample time to land.
-    // Awaiting it would add a database round trip per source to every search.
-    void cacheSet(lookup, results, PROVIDER_CACHE_TTL_SECONDS);
-    recordSuccess(provider.name, Date.now() - startedAt);
-    return results;
-  } catch (err) {
-    const reason = err instanceof Error ? err.message.slice(0, 100) : "failed";
-    recordFailure(provider.name, reason);
-    return fallback(reason);
-  }
+  });
 }
 
 async function discover(
-  plan: QueryPlan,
-  limit: number,
-  locale: string,
-  freshnessHours: number | null | undefined,
-  onFirstResults?: (results: RawResult[]) => void
+  plan: QueryPlan, limit: number, locale: string, freshnessHours: number | null | undefined,
+  options: SearchOptions, onResults?: (results: RawResult[]) => void
 ): Promise<DiscoveryOutcome> {
-  const degraded: { provider: string; reason: string }[] = [];
-
-  // Every source is asked at once and the answers are fused; there is no
-  // single "best" index to try first.
-  //
-  // The fan-out is not waited out in full. One slow source otherwise decides
-  // the response time for all of them, and the marginal value of its results
-  // is small once five others have answered. A source that misses the deadline
-  // is not cancelled: it finishes in the background and writes to the provider
-  // cache, so the next request for this query gets it for free.
-  const open = openProvidersForIntent(plan.intent);
-  const startedAt = Date.now();
-
-  const inFlight = open.map((provider) => ({
-    name: provider.name,
-    deadline: startedAt + DISCOVERY_DEADLINE_MS[provider.tier],
-    lookup: providerLookup(provider, plan.optimized, locale),
-    answer: runProvider(provider, plan.optimized, limit, locale, freshnessHours, degraded).then(
-      (results) => filterUnsafe(results)
-    ),
-  }));
-
-  // Watch the answers as they land rather than only at the end, for two
-  // reasons: the first ones name pages worth downloading immediately, and once
-  // enough sources have spoken there is nothing left to wait for.
-  const captured = new Map<string, RawResult[]>();
-  let answeredWithResults = 0;
-  let announced = false;
-  let releaseEarly: () => void = () => {};
-  const earlyExit = new Promise<void>((resolve) => {
-    releaseEarly = resolve;
-  });
-
-  for (const { name, answer } of inFlight) {
-    void answer.then((results) => {
-      captured.set(name, results);
-      if (results.length === 0) return;
-      answeredWithResults += 1;
-
-      if (!announced && onFirstResults) {
-        announced = true;
-        onFirstResults(results);
-      }
-
-      if (
-        answeredWithResults >= Math.min(EARLY_EXIT_PROVIDERS, open.length) &&
-        Date.now() - startedAt >= EARLY_EXIT_FLOOR_MS
-      ) {
-        releaseEarly();
-      }
-    });
-  }
-
-  // The floor is a wall clock, not a count: without this timer a query where
-  // every source answers in 80ms would never reach the check above again.
-  const floorTimer = setTimeout(() => {
-    if (answeredWithResults >= Math.min(EARLY_EXIT_PROVIDERS, open.length)) releaseEarly();
-  }, EARLY_EXIT_FLOOR_MS);
-
-  let settled = await Promise.all(
-    inFlight.map(async ({ name, answer, deadline, lookup }) => {
-      const inTime = await Promise.race([
-        raceDeadline(answer, deadline - Date.now()),
-        earlyExit.then(() => null),
-      ]);
-      if (inTime !== null) return { name, results: inTime };
-
-      // Cut short rather than timed out: the answer may have landed in the
-      // same instant the race was decided, and throwing it away would make the
-      // early exit cost coverage it does not need to cost.
-      const late = captured.get(name);
-      if (late && late.length > 0) return { name, results: late };
-
-      // A source that already explained itself — no_results, an error, its own
-      // stale cache — must not also be reported as having missed the deadline.
-      // It answered; the answer was just empty.
-      if (captured.has(name)) return { name, results: [] as RawResult[] };
-
-      // A source that ran out of time still has a recent answer on file, and
-      // that beats dropping its whole slice of the web. Without this the
-      // deadline could only be bought by losing coverage, which is why it had
-      // to be generous; with it the wait can be short.
-      const cached = await cacheGet<RawResult[]>(lookup);
-      if (cached && cached.payload.length > 0) {
-        degraded.push({ provider: name, reason: "deadline (son yanıtı kullanıldı)" });
-        return { name, results: cached.payload.slice(0, limit) };
-      }
-
-      degraded.push({ provider: name, reason: "deadline" });
-      return { name, results: [] as RawResult[] };
-    })
-  );
-
-  // Cutting the fan-out short is only an optimisation while something did
-  // arrive. If every source was slow, an empty answer is not a faster answer —
-  // it is a wrong one — so wait for them properly.
-  if (settled.every((s) => s.results.length === 0)) {
-    settled = await Promise.all(
-      inFlight.map(async ({ name, answer }) => ({ name, results: await answer }))
-    );
-  }
-  clearTimeout(floorTimer);
-
-  // One line per source. The list is appended to from two places that cannot
-  // see each other — the source's own failure path and the deadline that gave
-  // up on it — and a source can reach both, once by missing the deadline and
-  // again when its late answer turns out to be empty.
-  const seenDegraded = new Set<string>();
-  const reasons = degraded.filter((d) => {
-    if (seenDegraded.has(d.provider)) return false;
-    seenDegraded.add(d.provider);
-    return true;
-  });
-
-  const answered = settled.filter((s) => s.results.length > 0);
-  if (answered.length === 0) return { results: [], provider: "none", degraded: reasons };
-
-  // Open indexes match loosely, so gate on shared terms before merging.
-  const gated = answered
-    .map((s) => ({ name: s.name, results: relevanceGate(s.results, plan) }))
-    .filter((s) => s.results.length > 0);
-
-  const chosen = gated.length > 0 ? gated : answered;
-
-  return {
-    results: fuseByRank(chosen, limit),
-    provider: chosen.map((s) => s.name).join("+"),
-    degraded: reasons,
+  const open = openProvidersForIntent(plan.intent).filter((p) => p.available());
+  if (open.length === 0) return { results: [], provider: "none", degraded: [], providersQueried: 0, providersWithResults: 0 };
+  const profile = SEARCH_PROFILES[options.depth ?? "balanced"];
+  const deep = options.depth === "deep";
+  const started = Date.now();
+  const early = new AbortController();
+  const reserves = new AbortController();
+  const captured = new Map<string, ProviderOutcome>();
+  const useful = new Map<string, RawResult[]>();
+  let providersQueried = 0;
+  let closed = false;
+  const enough = () => {
+    const count = new Set([...useful.values()].flat().map((r) => urlKey(r.url))).size;
+    return !deep && useful.size >= Math.min(profile.primarySources, open.length) &&
+      count >= Math.ceil(limit / CANDIDATE_MULTIPLIER);
   };
+  const floorTimer = setTimeout(() => { if (enough()) early.abort(); }, EARLY_EXIT_FLOOR_MS);
+
+  // Start stale-cache reads alongside live discovery, never AFTER a deadline.
+  const inFlight = open.map((provider, index) => {
+    let cached: ReturnType<typeof cacheGet<RawResult[]>> = Promise.resolve(null);
+    const live = (async (): Promise<ProviderOutcome> => {
+      if (index >= profile.primarySources) {
+        await within(new Promise<never>(() => {}), profile.fallbackDelayMs, reserves.signal);
+        if (closed || enough()) return { results: [], skipped: true };
+      }
+      providersQueried++;
+      cached = options.noCache ? Promise.resolve(null) :
+        cacheGet<RawResult[]>(providerLookup(provider, plan.optimized, locale, limit, freshnessHours));
+      const outcome = await runProvider(provider, plan.optimized, limit, locale, freshnessHours, options.noCache === true);
+      const results = accepted(outcome.results, options, freshnessHours);
+      const answer = { ...outcome, results };
+      captured.set(provider.name, answer);
+      if (!closed && results.length) {
+        const relevant = relevanceGate(results, plan);
+        if (relevant.length) useful.set(provider.name, relevant);
+        onResults?.(relevant);
+        if (enough()) reserves.abort();
+        if (enough() && Date.now() - started >= EARLY_EXIT_FLOOR_MS) early.abort();
+      }
+      return answer;
+    })();
+    return { provider, cached: () => cached, live };
+  });
+
+  // Register running work with the request lifecycle so serverless runtimes
+  // can finish bounded cache warming after sending the response.
+  offload(() => Promise.all(inFlight.map((entry) => entry.live)));
+
+  const resolveEntry = async (entry: typeof inFlight[number], outcome: ProviderOutcome | null) => {
+    if (outcome?.skipped) return { name: entry.provider.name, results: [], skipped: true };
+    if (outcome?.results.length) return { name: entry.provider.name, ...outcome };
+    const hit = await entry.cached();
+    const stale = hit ? accepted(hit.payload, options, freshnessHours).slice(0, limit) : [];
+    const reason = outcome?.reason ?? (outcome ? "no_results" : "deadline");
+    return { name: entry.provider.name, results: stale,
+      reason: stale.length ? reason + " (son yanıtı kullanıldı)" : reason };
+  };
+
+  try {
+    let settled = await Promise.all(inFlight.map(async (entry) => {
+      const outcome = await within(entry.live,
+        started + (entry.provider.tier === "web" ? profile.webMs : profile.verticalMs) - Date.now(), early.signal);
+      return resolveEntry(entry, outcome ?? captured.get(entry.provider.name) ?? null);
+    }));
+
+    // A bounded recovery window preserves late results without waiting for the
+    // slowest source indefinitely. On expiry, partial/empty results are honest.
+    if (settled.every((s) => s.results.length === 0) || deep) {
+      await within(Promise.all(inFlight.map((entry) => entry.live)),
+        started + profile.recoveryMs - Date.now());
+      settled = await Promise.all(inFlight.map((entry) =>
+        resolveEntry(entry, captured.get(entry.provider.name) ?? null)));
+    }
+
+    const answered = settled.filter((s) => s.results.length > 0);
+    const gated = answered.map((s) => ({ ...s, results: relevanceGate(s.results, plan) }))
+      .filter((s) => s.results.length > 0);
+    const chosen = gated.length ? gated : answered;
+    return {
+      results: fuseByRank(chosen, limit),
+      provider: chosen.map((s) => s.name).join("+") || "none",
+      providersQueried,
+      providersWithResults: chosen.length,
+      degraded: settled.filter((s) => s.reason).map((s) => ({ provider: s.name, reason: s.reason! })),
+    };
+  } finally {
+    closed = true;
+    clearTimeout(floorTimer);
+    early.abort();
+    reserves.abort();
+  }
 }
 
 /**
@@ -540,72 +400,53 @@ async function discover(
  * the slowest server in the result set.
  */
 type ExtractedPage = Awaited<ReturnType<typeof fetchAndExtract>>;
+interface PageWork { promise: Promise<ExtractedPage>; controller: AbortController }
+
+function extractionPolicy(options: SearchOptions) {
+  const policy = options.domainPolicy ?? {};
+  const include = options.domainFilter?.include ?? [];
+  const allowed = policy.allowedDomains ?? [];
+  const intersection = allowed.length && include.length ? allowed.flatMap((a) =>
+    include.flatMap((b) => hostMatches(a, b) ? [a] : hostMatches(b, a) ? [b] : [])) : allowed.length ? allowed : include;
+  return {
+    allowedDomains: allowed.length && include.length && !intersection.length ? ["invalid"] : intersection,
+    blockedDomains: [...(policy.blockedDomains ?? []), ...(options.domainFilter?.exclude ?? [])],
+  };
+}
+
+function startPage(url: string, options: SearchOptions, remaining: number): PageWork {
+  const controller = new AbortController();
+  const promise = fetchAndExtract(url, {
+    policy: extractionPolicy(options), signal: controller.signal,
+    timeoutMs: Math.min(PAGE_TIMEOUT_MS, remaining),
+  }).catch(() => null);
+  return { promise, controller };
+}
 
 async function enrich(
-  results: RawResult[],
-  options: SearchOptions,
-  deadline: number,
-  inFlightPages: Map<string, Promise<ExtractedPage>>
+  results: RawResult[], options: SearchOptions, deadline: number, inFlightPages: Map<string, PageWork>
 ): Promise<{ raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[]> {
   const snippetOnly = (raw: RawResult) => ({
-    raw,
-    content: raw.snippet,
-    updatedAt: null,
-    publishedAt: raw.publishedAt ?? null,
+    raw, content: options.includeContent === false ? "" : raw.snippet,
+    updatedAt: null, publishedAt: raw.publishedAt ?? null,
   });
+  if (options.includeContent === false) return results.map(snippetOnly);
 
-  if (options.includeContent === false) {
-    return results.map((raw) => ({ ...snippetOnly(raw), content: "" }));
-  }
-
-  // Results are already ordered by the cheap pre-score, so the budget goes to
-  // the ones most likely to be worth reading. A speculative fetch the final
-  // ranking kept counts against it like any other; one the ranking discarded
-  // is sunk cost, not a charge against the pages that did make the cut —
-  // subtracting them all up front meant a search whose early candidates lost
-  // could fetch only two of its five.
-  let budget = MAX_FETCHES;
-  const out: { raw: RawResult; content: string; updatedAt: string | null; publishedAt: string | null }[] = [];
-
-  for (let i = 0; i < results.length; i += MAX_ENRICH_CONCURRENCY) {
-    const batch = results.slice(i, i + MAX_ENRICH_CONCURRENCY);
+  return Promise.all(results.map(async (raw) => {
     const remaining = deadline - Date.now();
-
-    const pages = await Promise.all(
-      batch.map(async (raw) => {
-        // A page already being downloaded is taken whatever the deadline says:
-        // it was started during discovery and is likely finished. It is keyed
-        // canonically because the copy that survives rank fusion can carry a
-        // different spelling of the same URL than the one prefetched.
-        const speculative = inFlightPages.get(urlKey(raw.url));
-        if (speculative) budget -= 1;
-
-        const page = speculative
-          ? await speculative
-          : remaining <= 0 || budget <= 0 || isUnextractable(raw.url)
-            ? null
-            : await (() => {
-                budget -= 1;
-                return fetchAndExtract(raw.url, {
-                  policy: options.domainPolicy,
-                  timeoutMs: Math.min(PAGE_TIMEOUT_MS, remaining),
-                });
-              })();
-        if (!page) return snippetOnly(raw);
-
-        return {
-          raw,
-          content: page.content || raw.snippet,
-          updatedAt: page.updatedAt,
-          // A date from the page itself beats the provider's guess.
-          publishedAt: page.publishedAt ?? raw.publishedAt ?? null,
-        };
-      })
-    );
-    out.push(...pages);
-  }
-
-  return out;
+    if (remaining <= 0) return snippetOnly(raw);
+    const key = urlKey(raw.url);
+    let work = inFlightPages.get(key);
+    if (!work && inFlightPages.size < SEARCH_PROFILES[options.depth ?? "balanced"].maxFetches && !isUnextractable(raw.url)) {
+      work = startPage(raw.url, options, remaining);
+      inFlightPages.set(key, work);
+    }
+    if (!work) return snippetOnly(raw);
+    const page = await within(work.promise, remaining);
+    if (!page) { work.controller.abort(); return snippetOnly(raw); }
+    return { raw, content: page.content || raw.snippet, updatedAt: page.updatedAt,
+      publishedAt: page.publishedAt ?? raw.publishedAt ?? null };
+  }));
 }
 
 /**
@@ -656,7 +497,7 @@ function corroborationByHost(results: RawResult[]): Map<string, number> {
   return hosts;
 }
 
-export async function searchWeb(
+async function executeSearch(
   query: string,
   options: SearchOptions = {}
 ): Promise<SearchResponse> {
@@ -669,28 +510,19 @@ export async function searchWeb(
   const locale = options.locale ?? DEFAULT_LOCALE;
   const plan = planQuery(trimmed, { freshnessHours: options.freshnessHours });
   const freshnessHours = options.freshnessHours ?? plan.suggestedFreshnessHours;
+  const depth = options.depth ?? "balanced";
+  const profile = SEARCH_PROFILES[depth];
 
-  // The domain filter is part of the cache's identity: a result set narrowed
-  // to one host cannot answer the same question asked of the whole web.
-  const filterKey = [
-    ...(options.domainFilter?.include ?? []).map((d) => `+${d.toLowerCase()}`),
-    ...(options.domainFilter?.exclude ?? []).map((d) => `-${d.toLowerCase()}`),
-  ]
-    .sort()
-    .join(",");
-
-  const lookup = {
-    namespace: filterKey ? `search|${filterKey}` : "search",
-    query: plan.optimized,
-    locale,
-    maxResults,
-    freshnessHours,
-  };
+  const lookup = searchLookup(plan, options, locale, maxResults, freshnessHours);
 
   if (!options.noCache) {
     const hit = await cacheGet<SearchResponse>(lookup);
     if (hit) {
-      return { ...hit.payload, cacheHit: true, tookMs: Date.now() - started };
+      const results = accepted(hit.payload.results, options, freshnessHours) as SearchResult[];
+      return { ...hit.payload, results,
+        diagnostics: { depth, providersQueried: 0, providersWithResults: 0, candidates: 0, pageFetches: 0,
+          resultHosts: new Set(results.map((r) => new URL(r.url).hostname)).size },
+        cacheHit: true, tookMs: Date.now() - started };
     }
   }
 
@@ -701,29 +533,23 @@ export async function searchWeb(
   // first source's best-looking results are downloaded while the rest of the
   // fan-out is still in flight, which takes that wait off the total instead of
   // adding to it.
-  const inFlightPages = new Map<string, Promise<ExtractedPage>>();
+  const inFlightPages = new Map<string, PageWork>();
   const wantsContent = options.includeContent !== false;
 
   const startPrefetch = (early: RawResult[]) => {
     if (!wantsContent) return;
-    const remaining = started + ENRICH_DEADLINE_MS - Date.now();
+    const remaining = started + profile.enrichMs - Date.now();
     if (remaining <= 200) return;
 
-    const head = [...early]
+    const head = accepted(early, options, freshnessHours)
       .sort((a, b) => preScore(b, plan) - preScore(a, plan))
       .filter((r) => !isUnextractable(r.url))
-      .slice(0, PREFETCH_MAX);
+      .slice(0, Math.max(0, PREFETCH_MAX - inFlightPages.size));
 
     for (const candidate of head) {
       const key = urlKey(candidate.url);
       if (inFlightPages.has(key)) continue;
-      inFlightPages.set(
-        key,
-        fetchAndExtract(candidate.url, {
-          policy: options.domainPolicy,
-          timeoutMs: Math.min(PAGE_TIMEOUT_MS, remaining),
-        }).catch(() => null)
-      );
+      inFlightPages.set(key, startPage(candidate.url, options, remaining));
     }
   };
 
@@ -731,21 +557,29 @@ export async function searchWeb(
     results: candidates,
     provider,
     degraded,
-  } = await discover(plan, candidateCount, locale, freshnessHours, startPrefetch);
+    providersQueried,
+    providersWithResults,
+  } = await discover(plan, candidateCount, locale, freshnessHours, options, startPrefetch);
+
+  const diagnostics = (results: RawResult[]) => ({ depth, providersQueried, providersWithResults,
+    candidates: candidates.length, pageFetches: inFlightPages.size,
+    resultHosts: new Set(results.map((r) => new URL(r.url).hostname)).size });
 
   // Rank the whole candidate pool on the free signals, then fetch only the
   // head of it. Cutting the pool before ranking wasted the extra candidates;
   // fetching all of them wasted the caller's time. Ordering first and fetching
   // second keeps the choice and drops the cost.
-  const raw = applyDomainFilter(candidates, options.domainFilter)
+  const raw = accepted(candidates, options, freshnessHours)
     .sort((a, b) => preScore(b, plan) - preScore(a, plan))
     .slice(0, maxResults + ENRICH_HEADROOM);
 
   if (raw.length === 0) {
+    for (const work of inFlightPages.values()) work.controller.abort();
     return {
       query: trimmed,
       plan,
       results: [],
+      diagnostics: diagnostics([]),
       provider,
       cacheHit: false,
       tookMs: Date.now() - started,
@@ -754,7 +588,12 @@ export async function searchWeb(
   }
 
   // Whatever has not been fetched by this point is served from its snippet.
-  const enriched = await enrich(raw, options, started + ENRICH_DEADLINE_MS, inFlightPages);
+  let enriched: Awaited<ReturnType<typeof enrich>>;
+  try {
+    enriched = await enrich(raw, options, started + profile.enrichMs, inFlightPages);
+  } finally {
+    for (const work of inFlightPages.values()) work.controller.abort();
+  }
   const hostCounts = corroborationByHost(raw);
 
   let results: SearchResult[] = enriched.map((item) => {
@@ -791,7 +630,7 @@ export async function searchWeb(
       const ts = Date.parse(r.publishedAt);
       return Number.isNaN(ts) || ts >= cutoff;
     });
-    if (withinWindow.length > 0) results = withinWindow;
+    results = withinWindow;
   }
 
   // Drop the plainly off-topic, but never to the point of returning nothing:
@@ -806,6 +645,7 @@ export async function searchWeb(
     query: trimmed,
     plan,
     results,
+    diagnostics: diagnostics(results),
     provider,
     cacheHit: false,
     tookMs: Date.now() - started,
@@ -815,9 +655,51 @@ export async function searchWeb(
   // Written after the response is sent: the caller has their answer, and the
   // cache write only matters to the next request.
   if (!options.noCache && results.length > 0) {
-    offload(() => cacheSet(lookup, response, ttlForIntent(plan.intent, freshnessHours)));
+    void cacheSet(lookup, response, ttlForIntent(plan.intent, freshnessHours), { background: true });
   }
 
   return response;
 }
 
+
+function searchLookup(
+  plan: QueryPlan, options: SearchOptions, locale: string, maxResults: number, freshnessHours?: number | null
+) {
+  const domains = (items?: string[]) => [...new Set((items ?? []).map((d) =>
+    d.trim().toLowerCase().replace(/^\*\./, "").replace(/^\./, "").replace(/\.$/, "")))].sort();
+  return {
+    namespace: JSON.stringify(["search", plan.intent, options.includeContent !== false, options.depth ?? "balanced",
+      domains(options.domainPolicy?.allowedDomains), domains(options.domainPolicy?.blockedDomains),
+      domains(options.domainFilter?.include), domains(options.domainFilter?.exclude)]),
+    query: plan.optimized, locale, maxResults, freshnessHours,
+  };
+}
+
+const searchFlights = new SingleFlight<SearchResponse>();
+
+/** Equivalent requests share work, but each caller keeps its own query/timing.
+ * Coalescing is per instance and does not change cache-hit billing semantics.
+ */
+export async function searchWeb(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
+  const started = Date.now();
+  if (typeof query !== "string" || !query.trim()) {
+    throw new CloudaError("invalid_request", "Sorgu boş olmayan bir metin olmalı.");
+  }
+  const trimmed = query.trim();
+  if (options.depth != null && !["fast", "balanced", "deep"].includes(options.depth)) {
+    throw new CloudaError("invalid_request", "Geçersiz arama derinliği.");
+  }
+  if (trimmed.length > 400) throw new CloudaError("query_too_long", "Sorgu 400 karakteri aşamaz.");
+  if (options.maxResults != null && !Number.isFinite(options.maxResults) ||
+      options.freshnessHours != null && (!Number.isFinite(options.freshnessHours) || options.freshnessHours <= 0)) {
+    throw new CloudaError("invalid_request", "Geçersiz sonuç sayısı veya güncellik aralığı.");
+  }
+  const maxResults = Math.min(Math.max(Math.round(options.maxResults ?? 10), 1), 30);
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const plan = planQuery(trimmed, { freshnessHours: options.freshnessHours });
+  const freshnessHours = options.freshnessHours ?? plan.suggestedFreshnessHours;
+  const lookup = searchLookup(plan, options, locale, maxResults, freshnessHours);
+  const response = await searchFlights.run(cacheKey(lookup) + (options.noCache ? ":uncached" : ""),
+    () => executeSearch(trimmed, { ...options, maxResults }));
+  return { ...structuredClone(response), query: trimmed, plan, tookMs: Date.now() - started };
+}

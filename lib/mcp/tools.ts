@@ -1,6 +1,7 @@
 import type { ApiContext } from "@/lib/api/gateway";
 import { CREDITS, Capability } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
+import { parseSearchDepth, parseFreshness, parseDomains, parseLocale } from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
 import { fetchAndExtract } from "@/lib/search/extract";
 import { matchNews, newsCorpus } from "@/lib/search/newsroom";
@@ -96,13 +97,17 @@ export const MCP_TOOLS: McpTool[] = [
         query: { type: "string", description: "Arama sorgusu." },
         max_results: { type: "integer", description: "1-20, varsayılan 6.", minimum: 1, maximum: 20 },
         freshness: {
-          type: "string",
-          description: "hour | day | week | month | year. Yalnızca güncellik gerektiğinde ver.",
+          anyOf: [{ type: "string" }, { type: "number", exclusiveMinimum: 0 }],
+          description: "hour | day | week | month | year veya pozitif saat sayısı.",
         },
         include_content: {
           type: "boolean",
-          description: "false ise sayfa metni indirilmez; iki kat hızlı ve yarı fiyat.",
+          description: "false ise sayfa metni indirilmez; daha az ağ isteği ve daha düşük kredi maliyeti.",
         },
+        search_depth: { type: "string", enum: ["fast", "balanced", "deep"], default: "balanced" },
+        locale: { type: "string", description: "Örnek: tr-TR, en-US." },
+        no_cache: { type: "boolean" },
+        exclude_domains: { type: "array", items: { type: "string" } },
         include_domains: {
           type: "array",
           items: { type: "string" },
@@ -116,12 +121,14 @@ export const MCP_TOOLS: McpTool[] = [
       const result = await searchWeb(str(args, "query"), {
         maxResults: num(args, "max_results", 6, 1, 20),
         includeContent,
-        freshnessHours: undefined,
+        freshnessHours: parseFreshness(args.freshness),
+        depth: parseSearchDepth(args.search_depth),
+        locale: parseLocale(args.locale),
+        noCache: args.no_cache === true,
         domainPolicy: ctx.policy,
         domainFilter: {
-          include: Array.isArray(args.include_domains)
-            ? (args.include_domains as unknown[]).filter((d): d is string => typeof d === "string")
-            : undefined,
+          include: parseDomains(args.include_domains, "include_domains"),
+          exclude: parseDomains(args.exclude_domains, "exclude_domains"),
         },
       });
 

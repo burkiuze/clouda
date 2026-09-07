@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import {
+  parseSearchDepth,
   parseDomains,
   parseFreshness,
   parseLocale,
@@ -19,6 +20,7 @@ interface BatchBody {
   max_results?: number;
   locale?: string;
   freshness?: string | number;
+  search_depth?: string;
   include_content?: boolean;
   no_cache?: boolean;
   include_domains?: string[];
@@ -73,6 +75,7 @@ export const POST = withApi(
     }
 
     const options = {
+      depth: parseSearchDepth(body.search_depth),
       maxResults: parseInt_(body.max_results, 1, 30, 10),
       locale: parseLocale(body.locale),
       freshnessHours: parseFreshness(body.freshness),
@@ -103,6 +106,7 @@ export const POST = withApi(
               query: result.query,
               intent: result.plan.intent,
               cached: result.cacheHit,
+              diagnostics: result.diagnostics,
               results: result.results.map((r) => shapeResult(r, "results")),
               provider: result.provider,
               ...(result.degraded.length > 0 ? { degraded_providers: result.degraded } : {}),

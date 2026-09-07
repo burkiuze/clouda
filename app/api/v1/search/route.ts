@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import {
+  parseSearchDepth,
   parseDomains,
   parseFreshness,
   parseLocale,
@@ -21,6 +22,7 @@ interface SearchBody {
   max_results?: number;
   locale?: string;
   freshness?: string | number;
+  search_depth?: string;
   include_content?: boolean;
   no_cache?: boolean;
   mode?: string;
@@ -35,7 +37,7 @@ export const POST = withApi(
   { operation: "search", estimateCredits: CREDITS.search },
   async (req: NextRequest, ctx) => {
     const body = await readJson<SearchBody>(req);
-    const query = body.query?.trim();
+    const query = typeof body.query === "string" ? body.query.trim() : "";
     if (!query) {
       throw new CloudaError("invalid_request", "Gövde bir 'query' alanı içermeli.");
     }
@@ -51,6 +53,7 @@ export const POST = withApi(
     }
 
     const result = await searchWeb(query, {
+      depth: parseSearchDepth(body.search_depth),
       maxResults: parseInt_(body.max_results, 1, 30, 10),
       locale: parseLocale(body.locale),
       freshnessHours: parseFreshness(body.freshness),
@@ -77,6 +80,7 @@ export const POST = withApi(
       results: result.results.map((r) => shapeResult(r, mode)),
       provider: result.provider,
       cached: result.cacheHit,
+      diagnostics: result.diagnostics,
       ...(result.degraded.length > 0 ? { degraded_providers: result.degraded } : {}),
     };
 
