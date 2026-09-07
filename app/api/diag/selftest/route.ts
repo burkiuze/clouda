@@ -161,6 +161,22 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  // The headline feature of the Clouda North patch: three latency/coverage
+  // profiles. They typecheck and are unit-tested, but "fast is actually faster
+  // than deep against the real internet" is only answerable from here.
+  for (const depth of ["fast", "balanced", "deep"] as const) {
+    checks.push(
+      await check(`search:${depth}`, async () => {
+        const result = await searchWeb(`site reliability engineering ${depth}`, {
+          maxResults: 4,
+          depth,
+        });
+        expect(result.results.length > 0, "sonuç yok");
+        return `${result.results.length} sonuç, ${result.tookMs}ms, ${result.provider}`;
+      })
+    );
+  }
+
   checks.push(
     await check("newsroom", async () => {
       const corpus = await newsCorpus({ blocking: true });
