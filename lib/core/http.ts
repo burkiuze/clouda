@@ -5,7 +5,10 @@ import { assertUrlAllowed, DomainPolicy } from "@/lib/core/security";
 /** One outbound path for providers, extraction, browse and monitors. */
 export const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-export const CLOUDA_USER_AGENT = "CloudaBot/1.0 (+https://clouda.dev/bot)";
+/** Identifies this installation when we fetch as ourselves rather than as a browser. */
+export const CLOUDA_USER_AGENT =
+  process.env.CLOUDA_USER_AGENT ||
+  `CloudaBot/1.0 (+https://github.com/burkiuze/clouda; ${process.env.CLOUDA_CONTACT_EMAIL || "hello@clouda.dev"})`;
 
 export interface FetchOptions extends Omit<RequestInit, "signal" | "redirect"> {
   timeoutMs?: number;

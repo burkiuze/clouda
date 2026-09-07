@@ -1,8 +1,11 @@
-# Clouda North
+<img src="public/clouda-north.webp" alt="Clouda North" width="100%">
 
-![Clouda North](public/clouda-north.png)
-
-**Sürüm 0.2.0 — North**
+<p align="center">
+  <a href="LICENSE"><img alt="Lisans: GPL v3" src="https://img.shields.io/badge/lisans-GPL%20v3-2563eb"></a>
+  <img alt="Node 22+" src="https://img.shields.io/badge/node-22%20%7C%2024-2563eb">
+  <img alt="54 test" src="https://img.shields.io/badge/test-54%20geçiyor-16a34a">
+  <img alt="Sürüm 0.2.0" src="https://img.shields.io/badge/sürüm-0.2.0%20North-6366f1">
+</p>
 
 Yapay zeka modelleri ve ajanları için **açık kaynak web yetenekleri**. Web arama,
 sayfa okuma, kaynaklı yanıt, araştırma, belge sıralama ve metin parçalama
@@ -11,6 +14,24 @@ REST API veya MCP üzerinden ajanlarına bağlayabilir ve yeni sağlayıcılar e
 
 Clouda bir model eğitmez; modele dış dünyadan bilgi getiren ve bu bilgiyi
 kullanılabilir biçime dönüştüren araçlar sağlar.
+
+### Ne değildir
+
+Bunları peşinen söylemek, sonradan hayal kırıklığı yaşamandan iyidir.
+
+- **Google'ın indeksi değildir.** Kapsam, açık web indeksleri artı dikey
+  kaynakların birleşimi kadardır. Datacenter IP'lerine açık, her şeyi gören
+  ücretsiz bir arama kaynağı yok; olsaydı burada olurdu.
+- **Barındırılan bir hizmet değildir.** Bu depo, kendi sunucunda çalıştırdığın
+  kodu verir. Belirli bir barındırma sağlayıcısına bağlı değildir; `npm start`
+  ile herhangi bir Node.js sunucusunda çalışır.
+- **Cevapları üretmez, alıntılar.** `/api/v1/answer` her cümleyi kaynağından
+  birebir alır. Başarısızlık biçimi "işe yaramaz cevap"tır, "uydurulmuş cevap"
+  değil.
+- **Sıfır bağımlılıklı bir kütüphane değildir.** Next.js uygulaması olarak
+  gelir; hesap, kredi ve kimlik doğrulama katmanı örnek bir API sunucusudur ve
+  kullanmak zorunda değilsin. Saf modüller (`lib/rank/`, `lib/search/`)
+  veritabanı olmadan da çalışır.
 
 ## Yetenekler
 
@@ -86,6 +107,19 @@ Google ile giriş isteğe bağlıdır: kullanacaksan `GOOGLE_CLIENT_ID` ve
 `GITHUB_TOKEN`, GitHub arama sağlayıcısı için isteğe bağlıdır.
 `CRON_SECRET`, haber ve izleme zamanlayıcı uçlarını korur. Zamanlayıcıları kendi
 çalıştırma ortamında ayrıca kurmalısın.
+
+### Kendi kimliğinle çık
+
+| Değişken | Neden |
+| --- | --- |
+| `CLOUDA_CONTACT_EMAIL` | OpenAlex, iletişim adresi veren çağıranlara daha hızlı "polite pool"unu açar; SEC gerçek bir tarafı adlandıran User-Agent şart koşar. |
+| `CLOUDA_USER_AGENT` | Yukarıdakinden türetilen varsayılanı tamamen değiştirmek istersen. |
+| `NEXT_PUBLIC_APP_URL` | Panelin ve dokümanların bastığı örneklerin doğru adresi göstermesi için. |
+| `DIAG_TOKEN` | `/api/diag/selftest`'i açar. **Varsayılanı yoktur**: tanımlı değilse o uç yok sayılır. |
+
+İlk ikisi önemli. Varsayılanları bu projenin adresini taşır, yani tanımlamazsan
+çağrıların onun havuzunda birikir — ve eninde sonunda gelen hız sınırı, isteği
+yapana değil adresin sahibine düşer. Ciddi çalıştıracaksan kendi adresini yaz.
 
 Veritabanı olmadan saf hesaplama testleri ve kontrollü I/O testleri çalışır.
 Hesap ve anahtarla kullanılan HTTP API'si ise veritabanı gerektirir.
@@ -236,21 +270,24 @@ Mevcut `build` komutu veritabanı değişkenleri tanımlıysa migration betiğin
 `npx next build` komutlarını kullanabilirsin. Bir Node.js sunucusunda
 `npm start` ile çalıştırmak yeterlidir; belirli bir barındırma hizmeti zorunlu değildir.
 
-`/api/diag/selftest`, yapılandırılmış gizli anahtarla korunan canlı kontrol
-ucudur. Unit test değildir; üçüncü taraf erişimini kullandığı için zaman ve
-çalıştırma ortamına bağlıdır. Kaynak sağlığı ve bellek önbelleği her süreçte
-ayrıdır; çoklu süreçlerde bu durum ortak bir küresel karne değildir.
+`/api/diag/selftest`, `DIAG_TOKEN` ile korunan canlı kontrol ucudur.
+**Varsayılan bir token yoktur**: değişken tanımlı değilse uç 404 döner. Çağrı
+başına yaklaşık otuz üçüncü tarafa istek yapar, dolayısıyla herkese açık bir
+depodaki sabit bir token savunma değil savunma görüntüsü olurdu.
+
+Unit test değildir; üçüncü taraf erişimini kullandığı için zaman ve çalıştırma
+ortamına bağlıdır. Kaynak sağlığı ve bellek önbelleği her süreçte ayrıdır;
+çoklu süreçlerde bu ortak bir küresel karne değildir.
 
 ## Katkı
 
-Yeni arama sağlayıcısı için `lib/search/providers.ts` içindeki `Provider`
-sözleşmesini uygula ve uygun sorgu türlerinin listesine ekle. Çıktıların başlık,
-URL ve snippet içermeli; yayın tarihi bilinmiyorsa `null` kullan. Gerçek
-sağlayıcı hataları ile geçerli boş sonuçları ayır ve süre sınırlarına uy.
+Tek bir kural diğerlerinden önce gelir: **tahmin etme, ölç.** Buradaki kaynak
+listesi itibara göre değil, dağıtımın kendi çıkış IP'sinden yapılan ölçümle
+seçildi — ve elenenlerin hiçbiri kendi belgelerinde "çalışmıyor" yazmıyordu.
 
-Değişiklikle ilgili regresyon testini ekle, `npm test` ve `npm run typecheck`
-çalıştır. Performans değiştiriyorsan gecikmenin yanında sonuç sayısını ve dış
-istek sayısını da karşılaştır.
+Yeni sağlayıcı eklemek, test yazmak ve değişiklik göndermek için
+[CONTRIBUTING.md](CONTRIBUTING.md). Güvenlik açığı bildirimi için
+[SECURITY.md](SECURITY.md) — herkese açık issue açma.
 
 ## Sınırlar ve lisans
 

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardNav from "@/components/DashboardNav";
 import ApiKeysManager from "@/components/ApiKeysManager";
+import { publicBaseUrl } from "@/lib/config";
 import { CREDITS_PER_SEARCH, SIGNUP_FREE_CREDITS } from "@/lib/constants";
 import { recentSecurityEvents } from "@/lib/core/audit";
 import { usageSummary } from "@/lib/core/metrics";
@@ -24,6 +25,10 @@ const SECURITY_LABELS: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
+  // The examples below are meant to be copied and run, so they have to name
+  // the address this installation actually answers on rather than the address
+  // the project happens to be hosted at.
+  const base = publicBaseUrl();
   const session = await auth();
   if (!session?.user) redirect("/login");
 
@@ -90,7 +95,7 @@ export default async function DashboardPage() {
               Aşağıdan bir anahtar oluştur, ardından bu isteği gönder:
             </p>
             <pre className="mt-5 overflow-x-auto rounded-xl bg-clouda-bg p-5 font-mono text-[13px] leading-relaxed text-clouda-ink">
-{`curl https://clouda.dev/api/v1/search \\
+{`curl ${base}/api/v1/search \\
   -H "Authorization: Bearer <anahtarın>" \\
   -H "Content-Type: application/json" \\
   -d '{"query": "aranacak metin"}'`}
@@ -112,7 +117,7 @@ export default async function DashboardPage() {
   "mcpServers": {
     "clouda": {
       "type": "http",
-      "url": "https://clouda.dev/api/mcp",
+      "url": "${base}/api/mcp",
       "headers": { "Authorization": "Bearer <anahtarın>" }
     }
   }

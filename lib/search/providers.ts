@@ -5,6 +5,7 @@ import { CloudaError } from "@/lib/core/errors";
 import { RawResult } from "@/lib/search/types";
 import { asRawResults, matchNews, newsCorpus } from "@/lib/search/newsroom";
 import { isUrlAllowed } from "@/lib/core/security";
+import { contactEmail, userAgent } from "@/lib/config";
 
 /**
  * Discovery providers: open APIs plus an optional operator-configured backend.
@@ -192,7 +193,7 @@ const wikipedia: Provider = {
           `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
             query
           )}&format=json&srlimit=${limit}`,
-          { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
+          { headers: { "User-Agent": userAgent() } }
         );
 
         return (data?.query?.search ?? []).map<RawResult>((hit) => ({
@@ -358,7 +359,7 @@ const openalex: Provider = {
       }[];
     }>(
       `https://api.openalex.org/works?search=${encodeURIComponent(query)}` +
-        `&per-page=${limit}&mailto=hello@clouda.dev`
+        `&per-page=${limit}&mailto=${encodeURIComponent(contactEmail())}`
     );
 
     return (data?.results ?? [])
@@ -458,7 +459,7 @@ const wikidata: Provider = {
     }>(
       `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json` +
         `&search=${encodeURIComponent(query)}&language=${lang}&uselang=${lang}&limit=${Math.min(limit, 20)}`,
-      { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
+      { headers: { "User-Agent": userAgent() } }
     );
 
     return (data?.search ?? [])
@@ -553,7 +554,7 @@ const REGISTRIES: Registry[] = [
         crates?: { name?: string; description?: string; updated_at?: string }[];
       }>(
         `https://crates.io/api/v1/crates?q=${encodeURIComponent(query)}&per_page=${limit}`,
-        { headers: { "User-Agent": "Clouda/1.0 (https://clouda.dev)" } }
+        { headers: { "User-Agent": userAgent() } }
       );
 
       return (data?.crates ?? [])
@@ -795,7 +796,7 @@ const secFilings: Provider = {
       };
     }>(
       `https://efts.sec.gov/LATEST/search-index?q=${encodeURIComponent(`"${query}"`)}&hits=${limit}`,
-      { headers: { "User-Agent": "Clouda research contact@clouda.dev" } }
+      { headers: { "User-Agent": userAgent() } }
     );
 
     return (data?.hits?.hits ?? [])

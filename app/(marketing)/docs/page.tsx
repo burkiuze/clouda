@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { publicBaseUrl } from "@/lib/config";
 import { CREDITS } from "@/lib/constants";
 
 export const metadata = {
@@ -507,7 +508,7 @@ Content-Type: application/json`}</Code>
   "mcpServers": {
     "clouda": {
       "type": "http",
-      "url": "https://clouda-uze1.vercel.app/api/mcp",
+      "url": "${publicBaseUrl()}/api/mcp",
       "headers": { "Authorization": "Bearer cld_live_xxxxxxxx" }
     }
   }

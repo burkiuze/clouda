@@ -32,3 +32,41 @@ export function missingAuthConfig(): MissingVar[] {
 }
 
 export const hasDatabase = () => Boolean(process.env.DATABASE_URL);
+
+/**
+ * How this installation identifies itself to the outside world.
+ *
+ * Several sources ask callers to say who they are, and mean it: OpenAlex gives
+ * a contact address its faster "polite pool", and the SEC requires a User-Agent
+ * naming a real party. Those values were hard-coded to this project's own
+ * address, which is fine for one deployment and wrong for an open-source one —
+ * every fork would then be pooling its traffic under an address its operator
+ * does not control and cannot be reached at. Worse, the rate limit that
+ * eventually lands falls on whoever owns the address rather than on whoever
+ * made the requests.
+ *
+ * So it is configurable, with this project as the default. An operator running
+ * this seriously should set CLOUDA_CONTACT_EMAIL to their own.
+ */
+export function contactEmail(): string {
+  return process.env.CLOUDA_CONTACT_EMAIL || "hello@clouda.dev";
+}
+
+export function userAgent(): string {
+  const custom = process.env.CLOUDA_USER_AGENT;
+  if (custom) return custom;
+  return `Clouda/1.0 (+https://github.com/burkiuze/clouda; ${contactEmail()})`;
+}
+
+/**
+ * The externally reachable address of this installation, for the examples the
+ * UI prints. Unset means a local install, which is the honest default for a
+ * repository someone has just cloned.
+ */
+export function publicBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+}

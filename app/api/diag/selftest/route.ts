@@ -30,8 +30,15 @@ export const maxDuration = 300;
  * authentication, credit reservation, rate limiting — and that path is already
  * exercised by every live search.
  */
-const TOKEN = process.env.DIAG_TOKEN ?? "probe_c71b9de4a3";
-const USING_DEFAULT_TOKEN = !process.env.DIAG_TOKEN;
+/**
+ * No fallback value, deliberately.
+ *
+ * This endpoint reaches out to roughly thirty third parties per call, and the
+ * repository it lives in is public. A hard-coded default token would be
+ * readable by everyone it is supposed to keep out, which is not a weak defence
+ * but the appearance of one. Unset DIAG_TOKEN means the route does not exist.
+ */
+const TOKEN = process.env.DIAG_TOKEN ?? "";
 
 /** No domain policy, no capability restrictions: the tools' own logic is under test. */
 const STUB: ApiContext = {
@@ -305,13 +312,6 @@ export async function GET(req: NextRequest) {
       passed: checks.length - failed.length,
       failed: failed.length,
       total_ms: Date.now() - started,
-      ...(USING_DEFAULT_TOKEN
-        ? {
-            warning:
-              "DIAG_TOKEN tanımlı değil, yedek token kullanılıyor ve o token herkese açık " +
-              "depoda duruyor. Vercel'de DIAG_TOKEN tanımlarsan bu uç yalnızca sana açılır.",
-          }
-        : {}),
       failures: failed,
       checks,
     },
