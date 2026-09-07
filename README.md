@@ -256,9 +256,21 @@ istek sayısını da karşılaştır.
 
 Arama kapsamı açık web indeksleri ve dikey sağlayıcıların birleşimi kadardır.
 Sağlayıcı erişimi ve veri koşulları zamanla değişebilir. Dış hizmetlerin
-lisansları, projenin kaynak kodu lisansından ayrıdır; örneğin Marginalia için
-[sağlayıcının API açıklamasını](https://about.marginalia-search.com/article/api/)
-kontrol et.
+lisansları, projenin kaynak kodu lisansından ayrıdır.
+
+> **Marginalia ve ticari kullanım.** Marginalia'nın herkese açık API'si bu
+> projede daha önce **CC-BY-NC-SA 4.0** olarak belgelenmişti: atıf zorunlu ve
+> **ticari kullanıma kapalı**. Bu, belirsiz bir ayrıntı değil somut bir kısıt —
+> Marginalia iki genel web indeksinden biri, yani açık web katmanının yarısı, ve
+> bu depodaki site kredi satıyor. Ücretli trafiği bu kaynağa dayandırmadan önce
+> [sağlayıcının API açıklamasını](https://about.marginalia-search.com/article/api/)
+> teyit et; koşullar hâlâ ticari kullanıma kapalıysa ya Marginalia ile ayrı bir
+> izin konuş, ya `MARGINALIA_API_KEY` ile kendi anlaşmalı anahtarını kullan, ya
+> da bu kaynağı ücretsiz kademeyle sınırla.
+>
+> Kod tabanı yeni API adresine (`api2.marginalia-search.com`) taşındığı için
+> koşulların değişmiş olması da mümkün. Bu satır, "değişmiş olabilir" demek
+> için değil, neyin doğrulanması gerektiğini isimlendirmek için burada.
 
 URL kontrolleri protokol, alan adı ve özel IP literal kısıtları uygular.
 DNS yanıtlarını bağlantıya sabitlemez; güvenilmeyen URL'lerle kamuya açık bir
