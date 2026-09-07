@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseInt_ } from "@/lib/api/shapes";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import { rank, RankDocument } from "@/lib/rank/bm25";
 
@@ -93,7 +92,7 @@ function parseDocuments(value: unknown): RankDocument[] {
  * priced as the cheapest thing here.
  */
 export const POST = withApi(
-  { operation: "search", estimateCredits: CREDITS.rerank },
+  { operation: "search" },
   async (req: NextRequest) => {
     const body = await readJson<RerankBody>(req);
 
@@ -132,7 +131,6 @@ export const POST = withApi(
           ...(r.metadata ? { metadata: r.metadata } : {}),
         })),
       },
-      creditsUsed: CREDITS.rerank,
       resultCount: ranked.length,
       provider: "local",
       cacheHit: false,

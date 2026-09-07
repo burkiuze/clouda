@@ -1,6 +1,6 @@
 import { CLOUDA_RELEASE } from "@/lib/version";
 import { NextRequest, NextResponse } from "next/server";
-import { CAPABILITIES, CAPABILITY_LABELS, CREDITS } from "@/lib/constants";
+import { NEWS_FEED_COUNT, TOTAL_SOURCE_COUNT } from "@/lib/constants";
 import { DATA_KINDS, INDICATOR_NAMES } from "@/lib/data/live";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +19,6 @@ const BEARER = [{ bearerAuth: [] }];
 
 /** Fields every successful response carries, from the gateway rather than the route. */
 const ENVELOPE = {
-  credits_used: { type: "integer", description: "Bu istek için düşülen kredi." },
-  credits_remaining: { type: "integer", description: "İşlem sonrası bakiye." },
   took_ms: { type: "integer", description: "Sunucu tarafında geçen süre." },
 };
 
@@ -82,15 +80,15 @@ export async function GET(req: NextRequest) {
       summary: "Yapay zeka modelleri ve ajanları için canlı web erişimi.",
       description:
         "Arama, haber, içerik çıkarımı, kaynaklı cevap, canlı veri, site haritası, " +
-        "yeniden sıralama ve parçalama. Kimlik doğrulama her uçta 'Authorization: " +
-        "Bearer cld_live_...' başlığıyla yapılır. Aynı yetenekler MCP üzerinden de " +
-        `sunulur: ${base}/api/mcp`,
+        "yeniden sıralama ve parçalama. Yerel çalıştırmada kimlik doğrulama " +
+        "gerekmez; CLOUDA_TOKEN tanımlarsan her uç 'Authorization: Bearer <token>' " +
+        `ister. Aynı yetenekler MCP üzerinden de sunulur: ${base}/api/mcp`,
       contact: { url: base },
     },
     servers: [{ url: base }],
     components: {
       securitySchemes: {
-        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "cld_live_..." },
+        bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "CLOUDA_TOKEN" },
       },
       schemas: { SearchResult: RESULT_SCHEMA },
       responses: {
@@ -111,19 +109,13 @@ export async function GET(req: NextRequest) {
         },
       },
     },
-    security: BEARER,
-    "x-credits": CREDITS,
-    "x-capabilities": CAPABILITIES.map((name) => ({
-      name,
-      title: CAPABILITY_LABELS[name].title,
-      description: CAPABILITY_LABELS[name].description,
-    })),
+    security: [],
+    "x-sources": { endpoints: TOTAL_SOURCE_COUNT, news_feeds: NEWS_FEED_COUNT },
     paths: {
       "/api/v1/search": {
         post: {
           operationId: "search",
           summary: "Web araması, içerik çıkarımı ve kalite skorları",
-          description: `Her istekte ${CREDITS.search} kredi; içerik istenmezse ${CREDITS.searchNoContent}. Önbellekten gelen ücretsiz.`,
           requestBody: jsonBody(
             {
               query: { type: "string" },
@@ -172,7 +164,6 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "searchBatch",
           summary: "Tek istekte 10 sorguya kadar paralel arama",
-          description: `Her sorgu tek başına ne ödüyorsa onu öder (${CREDITS.search} kredi).`,
           requestBody: jsonBody(
             {
               queries: { type: "array", items: { type: "string" }, maxItems: 10 },
@@ -201,7 +192,7 @@ export async function GET(req: NextRequest) {
           summary: "Yayıncı beslemelerinden canlı haber",
           description:
             "Sorgu opsiyoneldir; boş bırakılırsa en son manşetler döner. Adresler gerçek " +
-            `makale adresleridir. ${CREDITS.searchNoContent} kredi, tam metinle ${CREDITS.search}.`,
+            "makale adresleridir, dolayısıyla okunabilirler.",
           requestBody: jsonBody({
             query: { type: "string", description: "Opsiyonel." },
             lang: { type: "string", enum: ["tr", "en"] },
@@ -244,7 +235,7 @@ export async function GET(req: NextRequest) {
           description:
             "Bunları aramayla sorma: arama, yazıldığı tarihteki rakamı içeren bir makale " +
             "döndürür. Yanıt hem ölçüm zamanını hem getirilme zamanını taşır — ikisi aynı " +
-            `şey değildir. ${CREDITS.data} kredi.`,
+            "şey değildir.",
           requestBody: jsonBody(
             {
               kind: { type: "string", enum: DATA_KINDS },
@@ -285,7 +276,7 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "mapSite",
           summary: "Bir sitenin yayımladığı bütün adresler",
-          description: `Sitenin kendi site haritasından okunur, taranmaz. ${CREDITS.map} kredi.`,
+          description: "Sitenin kendi site haritasından okunur, taranmaz.",
           requestBody: jsonBody(
             {
               url: { type: "string" },
@@ -320,7 +311,6 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "extract",
           summary: "Adresleri modele hazır metne çevirir",
-          description: `${CREDITS.extractBase} + adres başına ${CREDITS.extractPerUrl} kredi.`,
           requestBody: jsonBody({ urls: { type: "array", items: { type: "string" } } }, ["urls"]),
           responses: {
             ...ok({ pages: { type: "array", items: { type: "object", additionalProperties: true } } }),
@@ -334,8 +324,7 @@ export async function GET(req: NextRequest) {
           operationId: "answer",
           summary: "Kaynaklı, alıntıya dayalı cevap",
           description:
-            "Her cümle kaynağından birebir alıntıdır; hiçbiri üretilmez. " +
-            `'citations' özelliği gerekir. ${CREDITS.search + CREDITS.citations} kredi.`,
+            "Her cümle kaynağından birebir alıntıdır; hiçbiri üretilmez.",
           requestBody: jsonBody(
             {
               query: { type: "string" },
@@ -359,7 +348,7 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "rerank",
           summary: "Kendi belgelerini bir sorguya göre sıralar",
-          description: `Ağ kullanmaz, milisaniyede döner. ${CREDITS.rerank} kredi.`,
+          description: "Ağ kullanmaz, milisaniyede döner.",
           requestBody: jsonBody(
             {
               query: { type: "string" },
@@ -415,7 +404,7 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "chunk",
           summary: "Uzun metni başlık yapısını koruyarak parçalara böler",
-          description: `Ağ kullanmaz. ${CREDITS.chunk} kredi.`,
+          description: "Ağ kullanmaz.",
           requestBody: jsonBody(
             {
               text: { type: "string" },
@@ -440,7 +429,6 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "research",
           summary: "Çok turlu araştırma, kaynaklı rapor",
-          description: `'research' özelliği gerekir. ${CREDITS.researchBase} + arama başına ${CREDITS.researchPerSearch}.`,
           requestBody: jsonBody(
             {
               question: { type: "string" },
@@ -459,7 +447,6 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "browse",
           summary: "Sayfa açar, bağlantı takip eder",
-          description: `'browse' özelliği gerekir. ${CREDITS.browseBase} + adım başına ${CREDITS.browsePerStep}.`,
           requestBody: jsonBody({ url: { type: "string" }, goal: { type: "string" } }, ["url"]),
           responses: {
             ...ok({ steps: { type: "array", items: { type: "object", additionalProperties: true } } }),
@@ -472,49 +459,10 @@ export async function GET(req: NextRequest) {
         post: {
           operationId: "social",
           summary: "Mastodon, Lemmy ve YouTube araması",
-          description: `'social' özelliği gerekir. ${CREDITS.social} kredi.`,
           requestBody: jsonBody({ query: { type: "string" } }, ["query"]),
           responses: {
             ...ok({ results: { type: "array", items: { type: "object", additionalProperties: true } } }),
             default: { $ref: "#/components/responses/Error" },
-          },
-        },
-      },
-
-      "/api/v1/monitors": {
-        post: {
-          operationId: "createMonitor",
-          summary: "Değişiklik izler, webhook gönderir",
-          description: `'monitor' özelliği gerekir. Kontrol başına ${CREDITS.monitorCheck} kredi.`,
-          requestBody: jsonBody({ url: { type: "string" }, query: { type: "string" } }),
-          responses: {
-            ...ok({ monitor: { type: "object", additionalProperties: true } }),
-            default: { $ref: "#/components/responses/Error" },
-          },
-        },
-        get: {
-          operationId: "listMonitors",
-          summary: "İzleyicileri ve son olayları listeler",
-          responses: {
-            ...ok({ monitors: { type: "array", items: { type: "object", additionalProperties: true } } }),
-          },
-        },
-      },
-
-      "/api/v1/usage": {
-        get: {
-          operationId: "usage",
-          summary: "Kullanım, maliyet ve performans metrikleri",
-          description: "Ücretsiz.",
-          parameters: [
-            { name: "hours", in: "query", schema: { type: "integer", default: 24 } },
-          ],
-          responses: {
-            ...ok({
-              totals: { type: "object", additionalProperties: true },
-              p50LatencyMs: { type: "integer" },
-              p95LatencyMs: { type: "integer" },
-            }),
           },
         },
       },

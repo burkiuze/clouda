@@ -40,16 +40,8 @@ export const maxDuration = 300;
  */
 const TOKEN = process.env.DIAG_TOKEN ?? "";
 
-/** No domain policy, no capability restrictions: the tools' own logic is under test. */
-const STUB: ApiContext = {
-  userId: "selftest",
-  apiKeyId: "selftest",
-  keyName: "selftest",
-  credits: 0,
-  capabilities: ["research", "browse", "monitor", "citations", "social"],
-  policy: {},
-  rateLimitPerMin: 0,
-};
+/** No domain restrictions: the tools' own logic is what is under test. */
+const STUB: ApiContext = { policy: {} };
 
 interface Check {
   name: string;
@@ -214,9 +206,8 @@ export async function GET(req: NextRequest) {
       await check(`mcp:${tool.name}`, async () => {
         const found = findTool(tool.name);
         expect(Boolean(found), "araç kayıtta bulunamadı");
-        const { text, credits } = await (found as typeof tool).run(toolArgs[tool.name] ?? {}, STUB);
+        const { text } = await (found as typeof tool).run(toolArgs[tool.name] ?? {}, STUB);
         expect(text.length > 0, "araç boş metin döndürdü");
-        expect(credits >= 0, "negatif kredi");
 
         // An answer that quotes a question back is worse than no answer, and
         // this is the check that caught it happening.
@@ -228,7 +219,7 @@ export async function GET(req: NextRequest) {
           );
         }
 
-        return `${credits} kredi, ${text.length} karakter: ${text.replace(/\s+/g, " ").slice(0, 130)}`;
+        return `${text.length} karakter: ${text.replace(/\s+/g, " ").slice(0, 130)}`;
       })
     );
   }
@@ -268,12 +259,19 @@ export async function GET(req: NextRequest) {
   );
 
   checks.push(
-    await check("rpc:unauthenticated tools/call", async () => {
+    await check("rpc:tools/call yetkilendirmesi", async () => {
       const { body } = await rpc("tools/call", { name: "clouda_search", arguments: { query: "x" } });
       // Must be refused, and refused as a transport error rather than silently.
-      expect(Boolean(body?.error), "anahtarsız çağrı reddedilmedi");
-      expect(body.error.code === -32001, `beklenmeyen kod ${body.error.code}`);
-      return `reddedildi: ${body.error.message}`;
+      // With no CLOUDA_TOKEN set the call is allowed, which is the point of a
+      // local tool; with one set it must be refused. Both are correct, so the
+      // check asserts they are consistent with the configuration.
+      const guarded = Boolean(process.env.CLOUDA_TOKEN);
+      if (guarded) {
+        expect(Boolean(body?.error), "token tanımlıyken korumasız çağrı geçti");
+        return `token isteniyor: ${body.error.message}`;
+      }
+      expect(!body?.error || body.error.code !== -32001, "token yokken kimlik istendi");
+      return "token tanımlı değil, yerel çağrı kabul edildi";
     })
   );
 

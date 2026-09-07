@@ -13,11 +13,13 @@ sorguya yalnızca zaman aşımı ekler.
 
 ```bash
 npm ci
-cp .env.example .env      # veritabanı gerektiren kısımlar için doldur
-npm test                  # ağ ve veritabanı kullanmaz
+npm test          # ağ kullanmaz
 npm run typecheck
-npm run dev
+npm run dev       # http://localhost:3000
 ```
+
+Yapılandırma gerekmez. `.env` yalnızca isteğe bağlı şeyler için:
+`.env.example` içindeki her değişken bir şeyi açar, hiçbiri kurulum şartı değil.
 
 `npm test` saf modülleri derleyip çalıştırır; entegrasyon testleri gerçek
 TypeScript modüllerini yükler ve yalnızca I/O sınırlarını denetimli

@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { fetchAndExtract } from "@/lib/search/extract";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import { assertUrlAllowed } from "@/lib/core/security";
 
@@ -27,7 +26,7 @@ const CONCURRENCY = 5;
  * use it to reach into a private network.
  */
 export const POST = withApi(
-  { operation: "extract", estimateCredits: CREDITS.extractBase + CREDITS.extractPerUrl * MAX_URLS },
+  { operation: "extract" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<ExtractBody>(req);
 
@@ -87,7 +86,6 @@ export const POST = withApi(
         extracted: succeeded,
       },
       // Only readable pages are charged for.
-      creditsUsed: CREDITS.extractBase + CREDITS.extractPerUrl * succeeded,
       resultCount: succeeded,
       label: urls[0],
     };

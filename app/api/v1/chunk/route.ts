@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseInt_ } from "@/lib/api/shapes";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import { chunkText } from "@/lib/rank/chunk";
 
@@ -31,7 +30,7 @@ const MAX_TEXT = 1_000_000;
  * /api/v1/rerank, which chooses between the pieces.
  */
 export const POST = withApi(
-  { operation: "extract", estimateCredits: CREDITS.chunk },
+  { operation: "extract" },
   async (req: NextRequest) => {
     const body = await readJson<ChunkBody>(req);
 
@@ -70,7 +69,6 @@ export const POST = withApi(
           end: c.end,
         })),
       },
-      creditsUsed: CREDITS.chunk,
       resultCount: chunks.length,
       provider: "local",
       cacheHit: false,

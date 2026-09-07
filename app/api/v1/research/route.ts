@@ -2,9 +2,8 @@ import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseFreshness, parseLocale, parseInt_ } from "@/lib/api/shapes";
 import { runResearch } from "@/lib/research/orchestrator";
-import { prisma } from "@/lib/prisma";
-import { CREDITS, RESEARCH_DEPTHS, type ResearchDepth } from "@/lib/constants";
-import { CloudaError, toCloudaError } from "@/lib/core/errors";
+import { RESEARCH_DEPTHS, type ResearchDepth } from "@/lib/constants";
+import { CloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -19,16 +18,16 @@ interface ResearchBody {
 }
 
 /**
- * POST /api/v1/research — deep research. Requires the "research" capability.
- * The run is recorded so a caller can audit what a report was built from.
+ * POST /api/v1/research — breaks a question into sub-questions, searches each,
+ * reads the sources and returns a cited report.
+ *
+ * Runs used to be written to a table so a caller could audit what a report was
+ * built from and what it cost. Nothing costs anything now, and the report
+ * carries its own sources and statistics, so the record added a database
+ * requirement without adding an answer.
  */
 export const POST = withApi(
-  {
-    operation: "research",
-    capability: "research",
-    // Worst case: the base fee plus a search for every planned round.
-    estimateCredits: CREDITS.researchBase + CREDITS.researchPerSearch * 8,
-  },
+  { operation: "research" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<ResearchBody>(req);
     const question = body.question?.trim();
@@ -44,65 +43,33 @@ export const POST = withApi(
       );
     }
 
-    const run = await prisma.researchRun.create({
-      data: { userId: ctx.userId, apiKeyId: ctx.apiKeyId, question, depth },
+    const report = await runResearch(question, {
+      depth,
+      maxSources: body.max_sources ? parseInt_(body.max_sources, 3, 40, 12) : undefined,
+      maxDurationMs: body.max_duration_ms
+        ? parseInt_(body.max_duration_ms, 5_000, 120_000, 60_000)
+        : undefined,
+      locale: parseLocale(body.locale),
+      freshnessHours: parseFreshness(body.freshness),
+      domainPolicy: ctx.policy,
     });
 
-    try {
-      const report = await runResearch(question, {
-        depth,
-        maxSources: body.max_sources ? parseInt_(body.max_sources, 3, 40, 12) : undefined,
-        maxDurationMs: body.max_duration_ms
-          ? parseInt_(body.max_duration_ms, 5_000, 120_000, 60_000)
-          : undefined,
-        locale: parseLocale(body.locale),
-        freshnessHours: parseFreshness(body.freshness),
-        domainPolicy: ctx.policy,
-      });
-
-      const creditsUsed =
-        CREDITS.researchBase + CREDITS.researchPerSearch * report.stats.searches;
-
-      await prisma.researchRun.update({
-        where: { id: run.id },
-        data: {
-          status: "completed",
-          report: report as never,
-          sourcesCount: report.stats.sourcesExamined,
-          searchCount: report.stats.searches,
-          creditsUsed,
-          finishedAt: new Date(),
-        },
-      });
-
-      return {
-        body: {
-          research_id: run.id,
-          question: report.question,
-          depth: report.depth,
-          plan: report.plan,
-          summary: report.summary,
-          sections: report.sections,
-          key_findings: report.keyFindings,
-          conflicts: report.conflicts,
-          sources: report.sources,
-          gaps: report.gaps,
-          stats: report.stats,
-        },
-        creditsUsed,
-        resultCount: report.stats.sourcesExamined,
-        provider: "research",
-        label: question,
-      };
-    } catch (err) {
-      const error = toCloudaError(err);
-      await prisma.researchRun
-        .update({
-          where: { id: run.id },
-          data: { status: "failed", errorCode: error.code, finishedAt: new Date() },
-        })
-        .catch(() => {});
-      throw error;
-    }
+    return {
+      body: {
+        question: report.question,
+        depth: report.depth,
+        plan: report.plan,
+        summary: report.summary,
+        sections: report.sections,
+        key_findings: report.keyFindings,
+        conflicts: report.conflicts,
+        sources: report.sources,
+        gaps: report.gaps,
+        stats: report.stats,
+      },
+      resultCount: report.stats.sourcesExamined,
+      provider: "research",
+      label: question,
+    };
   }
 );

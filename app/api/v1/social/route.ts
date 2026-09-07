@@ -10,7 +10,6 @@ import {
   type SocialPlatform,
   type SocialPost,
 } from "@/lib/social/providers";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import { assertUrlAllowed } from "@/lib/core/security";
 
@@ -45,7 +44,7 @@ const MAX_VIDEO_URLS = 10;
  * `transcript_available` rather than leaving the caller to wonder.
  */
 export const POST = withApi(
-  { operation: "social", capability: "social", estimateCredits: CREDITS.social },
+  { operation: "social" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<SocialBody>(req);
 
@@ -87,7 +86,6 @@ export const POST = withApi(
           resolved: found.length,
           unsupported: urls.filter((u) => !found.some((v) => v.url === u)),
         },
-        creditsUsed: CREDITS.social,
         resultCount: found.length,
         label: urls[0],
       };
@@ -160,7 +158,6 @@ export const POST = withApi(
         posts,
         ...(degraded.length > 0 ? { degraded_platforms: degraded } : {}),
       },
-      creditsUsed: CREDITS.social,
       resultCount: posts.length,
       provider: requested.join("+"),
       label: query,

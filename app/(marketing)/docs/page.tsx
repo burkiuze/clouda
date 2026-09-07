@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { publicBaseUrl } from "@/lib/config";
-import { CREDITS } from "@/lib/constants";
 
 export const metadata = {
   title: "Clouda API dokümantasyonu",
@@ -11,126 +10,80 @@ const endpoints = [
   {
     method: "POST",
     path: "/api/v1/search",
-    capability: "her zaman açık",
-    cost: `${CREDITS.search} kredi`,
     summary: "Web araması, içerik çıkarımı ve kalite skorları.",
   },
   {
     method: "POST",
     path: "/api/v1/search/batch",
-    capability: "her zaman açık",
-    cost: `sorgu başına ${CREDITS.search}`,
     summary: "Tek istekte 10 sorguya kadar paralel arama.",
   },
   {
     method: "POST",
     path: "/api/v1/news",
-    capability: "her zaman açık",
-    cost: `${CREDITS.searchNoContent} kredi (metinle ${CREDITS.search})`,
     summary: "22 yayıncı beslemesinden canlı haber; sorgu opsiyonel.",
   },
   {
     method: "POST",
     path: "/api/v1/data",
-    capability: "her zaman açık",
-    cost: `${CREDITS.data} kredi`,
     summary: "Hava, kur, kripto, hisse, deprem, ülke, ekonomik gösterge — sayı olarak.",
   },
   {
     method: "POST",
     path: "/api/v1/map",
-    capability: "her zaman açık",
-    cost: `${CREDITS.map} kredi`,
     summary: "Bir sitenin yayımladığı bütün adresleri kendi site haritasından çıkarır.",
   },
   {
     method: "POST",
     path: "/api/v1/rerank",
-    capability: "her zaman açık",
-    cost: `${CREDITS.rerank} kredi`,
     summary: "Kendi belgelerini bir sorguya göre sıralar. Ağ kullanmaz.",
   },
   {
     method: "POST",
     path: "/api/v1/chunk",
-    capability: "her zaman açık",
-    cost: `${CREDITS.chunk} kredi`,
     summary: "Uzun metni başlık yapısını koruyarak modele hazır parçalara böler.",
   },
   {
     method: "POST",
     path: "/api/v1/research",
-    capability: "research",
-    cost: `${CREDITS.researchBase} + arama başına ${CREDITS.researchPerSearch}`,
     summary: "Soruyu alt sorulara böler, çok turlu araştırır, kaynaklı rapor üretir.",
   },
   {
     method: "POST",
     path: "/api/v1/browse",
-    capability: "browse",
-    cost: `${CREDITS.browseBase} + adım başına ${CREDITS.browsePerStep}`,
     summary: "Sayfa açar, bağlantı takip eder, sayfalar, sayfa içinde arar.",
   },
   {
     method: "POST",
     path: "/api/v1/answer",
-    capability: "citations",
-    cost: `${CREDITS.search + CREDITS.citations} kredi`,
     summary: "Soruyu kaynaklı, alıntıya dayalı bir cevaba çevirir.",
   },
   {
     method: "POST",
     path: "/api/v1/extract",
-    capability: "her zaman açık",
-    cost: `${CREDITS.extractBase} + adres başına ${CREDITS.extractPerUrl}`,
     summary: "Elindeki adresleri temiz, modele hazır metne çevirir.",
   },
   {
     method: "POST",
     path: "/api/v1/social",
-    capability: "social",
-    cost: `${CREDITS.social} kredi`,
     summary: "Açık sosyal platformlarda ve YouTube'da arar; video adreslerini çözer.",
   },
   {
     method: "POST",
-    path: "/api/v1/monitors",
-    capability: "monitor",
-    cost: `kontrol başına ${CREDITS.monitorCheck}`,
-    summary: "URL ya da sorgu izler, değişince webhook gönderir.",
-  },
-  {
-    method: "POST",
     path: "/api/mcp",
-    capability: "her zaman açık",
-    cost: "araca göre",
     summary: "MCP sunucusu. Ajan doğrudan bağlanır, sekiz araç yerli gibi çalışır.",
   },
   {
     method: "GET",
     path: "/api/v1/openapi",
-    capability: "açık",
-    cost: "ücretsiz",
     summary: "Makine tarafından okunabilir OpenAPI 3.1 şeması.",
-  },
-  {
-    method: "GET",
-    path: "/api/v1/usage",
-    capability: "her zaman açık",
-    cost: "ücretsiz",
-    summary: "Kullanım, maliyet ve performans metrikleri.",
   },
 ];
 
 const errorCodes = [
-  ["missing_api_key", "401", "Authorization başlığı yok"],
-  ["invalid_api_key", "401", "Anahtar tanınmadı"],
-  ["capability_not_enabled", "403", "Bu anahtarda ilgili özellik kapalı"],
-  ["insufficient_credits", "402", "Hesap bakiyesi yetersiz"],
-  ["credit_cap_reached", "402", "Anahtarın kredi tavanına ulaşıldı"],
-  ["rate_limited", "429", "Dakikalık istek sınırı aşıldı"],
+  ["unauthorized", "401", "CLOUDA_TOKEN tanımlı ama istek onu taşımıyor"],
+  ["rate_limited", "429", "İstek sınırı aşıldı"],
   ["blocked_url", "403", "Özel ağ ya da yasaklı hedef"],
-  ["domain_not_allowed", "403", "Anahtarın alan adı politikasına takıldı"],
+  ["domain_not_allowed", "403", "İstekteki alan adı filtresine takıldı"],
   ["captcha_encountered", "502", "Kaynak bot doğrulaması istedi"],
   ["fetch_timeout", "504", "Kaynak zamanında yanıt vermedi"],
   ["provider_failed", "502", "Arama sağlayıcısı yanıt vermedi"],
@@ -156,11 +109,11 @@ export default function DocsPage() {
   return (
     <div className="mx-auto max-w-[1000px] px-6 py-16">
       <p className="eyebrow">dokümantasyon</p>
-      <h1 className="display mt-6 text-[40px] sm:text-5xl">AI Web Intelligence API</h1>
+      <h1 className="display mt-6 text-[40px] sm:text-5xl">Dokümantasyon</h1>
       <p className="prose-serif mt-6 max-w-2xl">
-        Tek bir kimlik doğrulama, tek bir hata sözlüğü, tutarlı JSON. Web araması her anahtarda
-        açıktır; derin araştırma, tarayıcı ajanı, izleme ve alıntı doğrulama özelliklerini anahtar
-        bazında sen seçersin.
+        Hepsi <code className="font-mono text-sm">POST</code>, hepsi JSON, tek bir hata
+        sözlüğü. Yerel çalıştırmada kimlik doğrulama gerekmez ve hiçbir uç kotaya tabi
+        değildir — bunlar senin makinende senin kaynaklarınla çalışır.
       </p>
 
       <div className="mt-10 overflow-x-auto">
@@ -168,8 +121,6 @@ export default function DocsPage() {
           <thead>
             <tr className="border-b border-clouda-border">
               <th className="eyebrow-plain pb-3">Uç nokta</th>
-              <th className="eyebrow-plain pb-3">Özellik</th>
-              <th className="eyebrow-plain pb-3">Maliyet</th>
             </tr>
           </thead>
           <tbody>
@@ -181,8 +132,6 @@ export default function DocsPage() {
                   </code>
                   <p className="mt-1 text-clouda-muted">{e.summary}</p>
                 </td>
-                <td className="py-3.5 pr-4 font-mono text-xs text-clouda-muted">{e.capability}</td>
-                <td className="py-3.5 pr-4 text-xs text-clouda-muted">{e.cost}</td>
               </tr>
             ))}
           </tbody>
@@ -193,15 +142,19 @@ export default function DocsPage() {
         <Section id="auth">
           <h2 className="display text-3xl">Kimlik doğrulama</h2>
           <p className="mt-4 text-clouda-muted">
-            Her istek panelden oluşturduğun anahtarı taşır. Anahtar yalnızca oluşturulurken bir kez
-            gösterilir; sunucuda SHA-256 özeti saklanır.
+            Varsayılan olarak yoktur. Kendi makinende çalışan bir araçla aranda tören
+            olmasının bir anlamı yok — sunucu, kendisine ulaşabilen herkese yanıt verir ve
+            localhost&apos;ta o kişi sensin.
           </p>
-          <Code>{`Authorization: Bearer cld_live_xxxxxxxx
-Content-Type: application/json`}</Code>
-          <p className="mt-4 text-sm text-clouda-muted">
-            Yanıt başlıklarında <code className="font-mono">X-Clouda-Credits-Remaining</code> ve{" "}
-            <code className="font-mono">X-Clouda-RateLimit-Limit</code> döner.
+          <Code>{`curl http://localhost:3000/api/v1/search \\
+  -H "Content-Type: application/json" \\
+  -d '{"query":"aranacak metin"}'`}</Code>
+          <p className="mt-4 text-clouda-muted">
+            Loopback dışında bir adrese bağlayacaksan{" "}
+            <code className="font-mono">CLOUDA_TOKEN</code> tanımla. O noktada
+            &ldquo;ulaşabilen herkes&rdquo; artık sen olmaktan çıkar, ve her uç şunu ister:
           </p>
+          <Code>{`Authorization: Bearer <CLOUDA_TOKEN>`}</Code>
         </Section>
 
         <Section id="search">
@@ -509,7 +462,7 @@ Content-Type: application/json`}</Code>
     "clouda": {
       "type": "http",
       "url": "${publicBaseUrl()}/api/mcp",
-      "headers": { "Authorization": "Bearer cld_live_xxxxxxxx" }
+      "headers": {}
     }
   }
 }`}</Code>
@@ -524,11 +477,11 @@ Content-Type: application/json`}</Code>
             <code className="font-mono">clouda_chunk</code>.
           </p>
           <p className="mt-4 text-sm text-clouda-muted">
-            Kimlik doğrulama REST ile aynı anahtardır, dolayısıyla anahtarın özellikleri, kredi
-            sınırı ve alan adı politikası curl&apos;den de ajandan da aynı şekilde geçerlidir.
+            Kimlik doğrulama REST ile aynıdır: yerelde yok, <code className="font-mono">CLOUDA_TOKEN</code>{" "}
+            tanımlıysa aynı başlık.
             Başarısız bir araç çağrısı taşıma katmanı hatası olarak değil,{" "}
-            <code className="font-mono">isError</code> sonucu olarak döner: &ldquo;bu anahtarda
-            citations kapalı&rdquo; bir ajanın etrafından dolaşabileceği bir bilgidir — söylenirse.
+            <code className="font-mono">isError</code> sonucu olarak döner: bir aracın neden
+            başarısız olduğu, ajanın etrafından dolaşabileceği bir bilgidir — söylenirse.
           </p>
         </Section>
 

@@ -1,5 +1,5 @@
 import type { ApiContext } from "@/lib/api/gateway";
-import { CREDITS, Capability } from "@/lib/constants";
+
 import { CloudaError } from "@/lib/core/errors";
 import { parseSearchDepth, parseFreshness, parseDomains, parseLocale } from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
@@ -28,11 +28,7 @@ export interface McpTool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  /** Capability the key must carry; absent means always available. */
-  capability?: Capability;
-  /** Worst-case price, reserved before the call. */
-  estimate: number;
-  run(args: Record<string, unknown>, ctx: ApiContext): Promise<{ text: string; credits: number }>;
+  run(args: Record<string, unknown>, ctx: ApiContext): Promise<{ text: string }>;
 }
 
 function str(args: Record<string, unknown>, key: string, required = true): string {
@@ -90,7 +86,6 @@ export const MCP_TOOLS: McpTool[] = [
       "Web'de arar ve bulduğu sayfaların okunabilir metnini çıkarır. Güncel bilgi, " +
       "teknik sorular, ürün karşılaştırmaları için. Her sonuç ilgililik, güvenilirlik " +
       "ve tazelik skorlarıyla gelir.",
-    estimate: CREDITS.search,
     inputSchema: {
       type: "object",
       properties: {
@@ -150,7 +145,6 @@ export const MCP_TOOLS: McpTool[] = [
 
       return {
         text,
-        credits: result.cacheHit ? 0 : includeContent ? CREDITS.search : CREDITS.searchNoContent,
       };
     },
   },
@@ -160,7 +154,6 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Yayıncı beslemelerinden canlı haber getirir. Sorgu opsiyoneldir: boş bırakırsan " +
       "en son manşetleri döner. Adresler gerçek makale adresleridir, okunabilir.",
-    estimate: CREDITS.search,
     inputSchema: {
       type: "object",
       properties: {
@@ -198,7 +191,6 @@ export const MCP_TOOLS: McpTool[] = [
             meta: `${i.source} · ${i.publishedAt?.slice(0, 16).replace("T", " ") ?? "tarih yok"}`,
           }))
         ),
-        credits: CREDITS.searchNoContent,
       };
     },
   },
@@ -208,7 +200,6 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Verilen adresleri indirip modele hazır düz metne çevirir. Elinde adres varken " +
       "arama yapmak yerine bunu kullan.",
-    estimate: CREDITS.extractBase + CREDITS.extractPerUrl * 5,
     inputSchema: {
       type: "object",
       properties: {
@@ -245,7 +236,6 @@ export const MCP_TOOLS: McpTool[] = [
 
       return {
         text,
-        credits: CREDITS.extractBase + CREDITS.extractPerUrl * pages.filter((p) => p.page).length,
       };
     },
   },
@@ -255,8 +245,6 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Soruyu arar ve yalnızca kaynaklardan birebir alıntılarla, atıflı bir cevap kurar. " +
       "Hiçbir cümle üretilmez; her cümlenin kaynağı vardır. Doğrulanabilir cevap gerektiğinde kullan.",
-    capability: "citations",
-    estimate: CREDITS.search + CREDITS.citations,
     inputSchema: {
       type: "object",
       properties: {
@@ -274,7 +262,7 @@ export const MCP_TOOLS: McpTool[] = [
       });
 
       if (result.results.length === 0) {
-        return { text: "Bu soru için kaynak bulunamadı.", credits: CREDITS.searchNoContent };
+        return { text: "Bu soru için kaynak bulunamadı." };
       }
 
       // Same floor the REST answer endpoint uses: a weakly supported sentence
@@ -305,7 +293,6 @@ export const MCP_TOOLS: McpTool[] = [
 
       return {
         text: body,
-        credits: (result.cacheHit ? 0 : CREDITS.search) + CREDITS.citations,
       };
     },
   },
@@ -315,7 +302,6 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Kendi belgelerini bir sorguya göre sıralar. Ağ kullanmaz, milisaniyede döner. " +
       "Vektör aramandan çıkan 50 pasajdan prompt'a girecek 5'ini seçmek için.",
-    estimate: CREDITS.rerank,
     inputSchema: {
       type: "object",
       properties: {
@@ -353,7 +339,6 @@ export const MCP_TOOLS: McpTool[] = [
               `${i + 1}. [belge ${r.id}] skor ${r.score} (görece ${r.relative})\n   ${r.bestPassage ?? ""}`
           )
           .join("\n"),
-        credits: CREDITS.rerank,
       };
     },
   },
@@ -363,7 +348,6 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "Uzun metni, başlık yapısını koruyarak modele verilebilir parçalara böler. " +
       "Ağ kullanmaz. clouda_extract çıktısını RAG'a hazırlamak için.",
-    estimate: CREDITS.chunk,
     inputSchema: {
       type: "object",
       properties: {
@@ -384,7 +368,6 @@ export const MCP_TOOLS: McpTool[] = [
         text: chunks
           .map((c) => `--- parça ${c.index + 1}/${chunks.length} (~${c.estimatedTokens} token)\n${c.text}`)
           .join("\n\n"),
-        credits: CREDITS.chunk,
       };
     },
   },
@@ -397,7 +380,6 @@ MCP_TOOLS.push({
     "deprem, ülke bilgisi, ekonomik gösterge. Bunları aramayla sorma — arama, yazıldığı " +
     "tarihteki rakamı içeren bir makale döndürür ve o rakam güncel değildir. Yanıt, " +
     "değerin ölçüldüğü zaman damgasıyla birlikte gelir.",
-  estimate: CREDITS.data,
   inputSchema: {
     type: "object",
     properties: {
@@ -452,7 +434,6 @@ MCP_TOOLS.push({
 
     return {
       text: `${header}\n\n${JSON.stringify(result.data, null, 2)}`,
-      credits: CREDITS.data,
     };
   },
 });
@@ -463,7 +444,6 @@ MCP_TOOLS.push({
     "Bir sitenin yayımladığı bütün adresleri, sitenin kendi site haritasından çıkarır. " +
     "Bir dokümantasyonu baştan sona okuman gerektiğinde önce bunu çağır, sonra çıkan " +
     "adresleri clouda_extract'e ver. Taramaya göre çok daha hızlı ve siteye çok daha kibar.",
-  estimate: CREDITS.map,
   inputSchema: {
     type: "object",
     properties: {
@@ -481,7 +461,7 @@ MCP_TOOLS.push({
     });
 
     if (result.urls.length === 0) {
-      return { text: `${result.site} için site haritası bulunamadı.`, credits: CREDITS.map };
+      return { text: `${result.site} için site haritası bulunamadı.` };
     }
 
     const header =
@@ -493,7 +473,6 @@ MCP_TOOLS.push({
       text: `${header}\n\n${result.urls
         .map((u) => (u.lastModified ? `${u.url}  [${u.lastModified.slice(0, 10)}]` : u.url))
         .join("\n")}`,
-      credits: CREDITS.map,
     };
   },
 });

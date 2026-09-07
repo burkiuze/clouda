@@ -5,12 +5,7 @@
  */
 
 export type ErrorCode =
-  | "missing_api_key"
-  | "invalid_api_key"
-  | "revoked_api_key"
-  | "capability_not_enabled"
-  | "insufficient_credits"
-  | "credit_cap_reached"
+  | "unauthorized"
   | "rate_limited"
   | "invalid_request"
   | "query_too_long"
@@ -33,12 +28,7 @@ export type ErrorCode =
   | "internal_error";
 
 const STATUS: Record<ErrorCode, number> = {
-  missing_api_key: 401,
-  invalid_api_key: 401,
-  revoked_api_key: 401,
-  capability_not_enabled: 403,
-  insufficient_credits: 402,
-  credit_cap_reached: 402,
+  unauthorized: 401,
   rate_limited: 429,
   invalid_request: 400,
   query_too_long: 400,

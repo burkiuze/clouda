@@ -1,60 +1,83 @@
 import Link from "next/link";
 import Logo from "./Logo";
-
-const columns = [
-  {
-    title: "Ürün",
-    links: [
-      { href: "/#nasil-calisir", label: "Genel bakış" },
-      { href: "/pricing", label: "Fiyatlandırma" },
-      { href: "/docs", label: "Dokümantasyon" },
-    ],
-  },
-  {
-    title: "Hesap",
-    links: [
-      { href: "/login", label: "Giriş yap" },
-      { href: "/dashboard", label: "Panel" },
-    ],
-  },
-  {
-    title: "İletişim",
-    links: [{ href: "mailto:hello@clouda.dev", label: "hello@clouda.dev" }],
-  },
-];
+import { NEWS_FEED_COUNT, TOTAL_SOURCE_COUNT } from "@/lib/constants";
 
 export default function Footer() {
   return (
     <footer className="border-t border-clouda-border bg-clouda-bg">
-      <div className="mx-auto max-w-[1240px] px-6 py-16">
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.4fr_2fr]">
-          <div>
+      <div className="mx-auto max-w-[1240px] px-6 py-14">
+        <div className="flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-sm">
             <Logo />
-            <p className="mt-5 max-w-xs text-sm leading-relaxed text-clouda-muted">
-              Yapay zeka ajanları için gerçek zamanlı web erişim katmanı. Aranmış, çıkarılmış ve
-              modele hazır sonuçlar.
+            <p className="mt-5 text-sm leading-relaxed text-clouda-muted">
+              Yapay zeka modelleri ve ajanları için açık kaynak web yetenekleri. Kendi
+              makinende çalışır; hesap, anahtar ve kota yoktur.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
-            {columns.map((col) => (
-              <div key={col.title}>
-                <h4 className="eyebrow">{col.title}</h4>
-                <ul className="mt-4 space-y-3">
-                  {col.links.map((l) => (
-                    <li key={l.href}>
-                      <Link href={l.href} className="nav-link">
-                        {l.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+
+          <div className="flex gap-12 text-sm">
+            <div>
+              <p className="eyebrow-plain text-[10px]">Kullanım</p>
+              <ul className="mt-4 space-y-2.5">
+                <li>
+                  <Link href="/docs" className="nav-link">
+                    Dokümantasyon
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/api/v1/openapi" className="nav-link">
+                    OpenAPI şeması
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/api/health" className="nav-link">
+                    Durum
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <p className="eyebrow-plain text-[10px]">Kaynak</p>
+              <ul className="mt-4 space-y-2.5">
+                <li>
+                  <a
+                    href="https://github.com/burkiuze/clouda"
+                    className="nav-link"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    GitHub
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/burkiuze/clouda/blob/main/CONTRIBUTING.md"
+                    className="nav-link"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Katkı
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/burkiuze/clouda/blob/main/LICENSE"
+                    className="nav-link"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    GPL v3
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
-        <div className="mt-14 border-t border-clouda-border pt-6 text-xs text-clouda-muted">
-          © {new Date().getFullYear()} Clouda. Tüm hakları saklıdır.
-        </div>
+
+        <p className="mt-12 border-t border-clouda-border pt-6 text-xs text-clouda-muted">
+          {TOTAL_SOURCE_COUNT} kaynak, {NEWS_FEED_COUNT} yayıncı beslemesi. Kapsam, açık web
+          indeksleri ve dikey kaynakların birleşimi kadardır.
+        </p>
       </div>
     </footer>
   );

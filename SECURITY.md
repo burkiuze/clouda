@@ -37,9 +37,9 @@ kısıtı da uygula. Bu, kodun kapatabileceği bir açık değil; katman farkı.
   yaklaşık otuz üçüncü tarafa istek yapar; **varsayılan bir değeri yoktur**,
   çünkü herkese açık bir depodaki sabit bir token savunma değil, savunma
   görüntüsüdür.
-- API anahtarları veritabanında SHA-256 özetiyle saklanır; düz metni yalnızca
-  oluşturma anında bir kez gösterilir.
-- Anahtarlara son kullanma tarihi verebilirsin. Bir kayda ya da depoya sızan
-  anahtarın etki alanı böylece kendiliğinden kapanır.
-- Kredi ayırma işlemi kendi `WHERE` koşulunda korunur, yani eşzamanlı istekler
-  bakiyeyi eksiye düşüremez.
+- Varsayılan olarak kimlik doğrulama **yoktur**. Bu, localhost'ta doğru
+  tercihtir ve `0.0.0.0`'a bağladığın anda değildir: o noktada
+  `CLOUDA_TOKEN` tanımla, yoksa sunucuna ulaşabilen herkes onu kullanabilir.
+- Sunucu, senin adına dış siteleri indirir. Güvenilmeyen bir girdiyle
+  çalıştırıyorsan bunun ne anlama geldiğini yukarıdaki SSRF bölümüyle birlikte
+  düşün.

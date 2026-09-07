@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseInt_ } from "@/lib/api/shapes";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import { mapSite } from "@/lib/crawl/sitemap";
 
@@ -28,7 +27,7 @@ interface Body {
  * /api/v1/extract to read the pages that matter.
  */
 export const POST = withApi(
-  { operation: "extract", estimateCredits: CREDITS.map },
+  { operation: "extract" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<Body>(req);
 
@@ -74,7 +73,6 @@ export const POST = withApi(
           via: entry.via,
         })),
       },
-      creditsUsed: CREDITS.map,
       resultCount: result.urls.length,
       provider: "sitemap",
       cacheHit: false,

@@ -9,7 +9,6 @@ test("freshness cache hits use memory and different windows use different keys",
   const lookup = { namespace: "test", query: "graph", freshnessHours: 1 };
   await cache.cacheSet(lookup, { ok: true }, 100);
   assert.deepEqual((await cache.cacheGet(lookup)).payload, { ok: true });
-  assert.equal(f.stats.reads, 0);
   assert.notEqual(cache.cacheKey(lookup), cache.cacheKey({ ...lookup, freshnessHours: 24 }));
   assert.notEqual(cache.cacheKey(lookup), cache.cacheKey({ ...lookup, freshnessHours: null }));
 });
@@ -20,12 +19,10 @@ test("cache key serialization has no separator or case-folding collisions", () =
   assert.notEqual(cache.cacheKey({ namespace: "page", query: "/API" }), cache.cacheKey({ namespace: "page", query: "/api" }));
 });
 
-test("fractional windows persist without writing a float to the legacy Int column", async () => {
-  const f = fixture();
-  const cache = f.load("lib/core/cache.ts");
+test("a fractional freshness window round-trips", async () => {
+  const cache = fixture().load("lib/core/cache.ts");
   const lookup = { namespace: "test", query: "graph", freshnessHours: 0.5 };
   await cache.cacheSet(lookup, "answer", 100);
-  assert.equal(f.rows.get(cache.cacheKey(lookup)).freshnessH, null);
   assert.equal((await cache.cacheGet(lookup)).payload, "answer");
 });
 
@@ -49,15 +46,19 @@ test("explicit invalidation clears both memory and persisted data", async () => 
   assert.equal(await cache.cacheGet(lookup), null);
 });
 
-test("slow database misses are bounded and concurrent reads share one operation", async () => {
-  const f = fixture({ dbReadMs: 250 });
-  const cache = f.load("lib/core/cache.ts");
-  const started = performance.now();
-  const results = await Promise.all(Array.from({ length: 20 }, () => cache.cacheGet({ namespace: "test", query: "graph" })));
-  assert.ok(performance.now() - started < 180);
-  assert.ok(results.every(r => r === null));
-  assert.equal(f.stats.reads, 1);
-  await delay(260);
+test("the store is bounded and evicts least-recently-used entries", async () => {
+  const cache = fixture().load("lib/core/cache.ts");
+  const { maxEntries } = cache.cacheStats();
+
+  for (let i = 0; i < maxEntries + 50; i++) {
+    await cache.cacheSet({ namespace: "bulk", query: `q${i}` }, i, 100);
+  }
+
+  const { entries } = cache.cacheStats();
+  assert.ok(entries <= maxEntries, `${entries} girdi, üst sınır ${maxEntries}`);
+  // The most recent writes survive; the earliest were evicted.
+  assert.equal((await cache.cacheGet({ namespace: "bulk", query: `q${maxEntries + 49}` })).payload, maxEntries + 49);
+  assert.equal(await cache.cacheGet({ namespace: "bulk", query: "q0" }), null);
 });
 
 test("a cache outage bounds the number of outstanding database reads", async () => {

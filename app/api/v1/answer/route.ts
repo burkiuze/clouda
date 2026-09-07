@@ -3,7 +3,6 @@ import { withApi, readJson } from "@/lib/api/gateway";
 import { parseFreshness, parseLocale, parseInt_ } from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
 import { verifyClaims } from "@/lib/research/citations";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
@@ -36,11 +35,7 @@ const MIN_CONFIDENCE = 0.35;
  * than resolved: picking a winner is the caller's judgement, not ours.
  */
 export const POST = withApi(
-  {
-    operation: "answer",
-    capability: "citations",
-    estimateCredits: CREDITS.search + CREDITS.citations,
-  },
+  { operation: "answer" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<AnswerBody>(req);
     const query = (body.query ?? body.question)?.trim();
@@ -68,7 +63,6 @@ export const POST = withApi(
           sources: [],
           ...(result.degraded.length > 0 ? { degraded_providers: result.degraded } : {}),
         },
-        creditsUsed: CREDITS.searchNoContent,
         resultCount: 0,
         label: query,
       };
@@ -117,7 +111,6 @@ export const POST = withApi(
         cached: result.cacheHit,
         ...(result.degraded.length > 0 ? { degraded_providers: result.degraded } : {}),
       },
-      creditsUsed: result.cacheHit ? CREDITS.citations : CREDITS.search + CREDITS.citations,
       resultCount: answer.length,
       provider: result.provider,
       cacheHit: result.cacheHit,

@@ -1,20 +1,28 @@
-import { prisma } from "@/lib/prisma";
-
 /**
- * Observability. Every billable operation writes one usage row, which doubles
- * as the metrics store: latency, provider, cache hits, step counts and error
- * codes are all queryable from it without a second system.
+ * What the running process has done, kept in the process.
+ *
+ * The previous version wrote one row per billable operation, because
+ * operations were billed and the bill had to be defensible. Nothing is billed
+ * now, so the only remaining question is the operational one: is it working,
+ * and how fast. That answer is worth keeping but not worth a database.
  */
 
-export type Operation = "search" | "research" | "browse" | "monitor" | "extract" | "answer" | "social";
+export type Operation =
+  | "search"
+  | "research"
+  | "browse"
+  | "extract"
+  | "answer"
+  | "social"
+  | "data"
+  | "map"
+  | "rerank"
+  | "chunk";
 
 export interface UsageRecord {
-  userId: string;
-  apiKeyId: string;
   operation: Operation;
   query: string;
   resultCount: number;
-  creditsUsed: number;
   provider?: string | null;
   latencyMs: number;
   cacheHit?: boolean;
@@ -23,29 +31,50 @@ export interface UsageRecord {
   errorCode?: string | null;
 }
 
+interface OperationStats {
+  requests: number;
+  errors: number;
+  cacheHits: number;
+  /** Kept so percentiles are real rather than estimated from an average. */
+  latencies: number[];
+}
+
+/** Enough samples for a meaningful p95, few enough to never matter for memory. */
+const MAX_SAMPLES = 500;
+
+const byOperation = new Map<Operation, OperationStats>();
+const providerCalls = new Map<string, { calls: number; ok: number }>();
+const startedAt = Date.now();
+
+function statsFor(operation: Operation): OperationStats {
+  let stats = byOperation.get(operation);
+  if (!stats) {
+    stats = { requests: 0, errors: 0, cacheHits: 0, latencies: [] };
+    byOperation.set(operation, stats);
+  }
+  return stats;
+}
+
 export async function recordUsage(record: UsageRecord): Promise<void> {
-  try {
-    await prisma.usageLog.create({
-      data: {
-        userId: record.userId,
-        apiKeyId: record.apiKeyId,
-        operation: record.operation,
-        query: record.query.slice(0, 500),
-        resultCount: record.resultCount,
-        creditsUsed: record.creditsUsed,
-        provider: record.provider ?? null,
-        latencyMs: record.latencyMs,
-        cacheHit: record.cacheHit ?? false,
-        steps: record.steps ?? 0,
-        success: record.success,
-        errorCode: record.errorCode ?? null,
-      },
-    });
-  } catch {
-    // Metrics must never take a request down with them.
+  const stats = statsFor(record.operation);
+  stats.requests += 1;
+  if (!record.success) stats.errors += 1;
+  if (record.cacheHit) stats.cacheHits += 1;
+
+  stats.latencies.push(record.latencyMs);
+  if (stats.latencies.length > MAX_SAMPLES) stats.latencies.shift();
+
+  if (record.provider) {
+    for (const name of record.provider.split("+")) {
+      const entry = providerCalls.get(name) ?? { calls: 0, ok: 0 };
+      entry.calls += 1;
+      if (record.success) entry.ok += 1;
+      providerCalls.set(name, entry);
+    }
   }
 
-  // Structured line so platform log search can aggregate without the database.
+  // One structured line per operation, so a terminal or a log collector can
+  // follow what the tool is doing without asking it anything.
   console.log(
     JSON.stringify({
       evt: "clouda.usage",
@@ -55,22 +84,15 @@ export async function recordUsage(record: UsageRecord): Promise<void> {
       provider: record.provider ?? null,
       ms: record.latencyMs,
       cache: record.cacheHit ?? false,
-      steps: record.steps ?? 0,
-      credits: record.creditsUsed,
       results: record.resultCount,
     })
   );
 }
 
 export interface UsageSummary {
-  window: string;
-  totals: {
-    requests: number;
-    credits: number;
-    errors: number;
-    cacheHits: number;
-  };
-  byOperation: Record<string, { requests: number; credits: number; avgLatencyMs: number }>;
+  uptimeSeconds: number;
+  totals: { requests: number; errors: number; cacheHits: number };
+  byOperation: Record<string, { requests: number; avgLatencyMs: number; p95LatencyMs: number }>;
   providerSuccessRate: Record<string, { calls: number; successRate: number }>;
   cacheHitRate: number;
   errorRate: number;
@@ -80,74 +102,50 @@ export interface UsageSummary {
 
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
-  const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
-  return sorted[idx];
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
 }
 
-/** Rolls the raw usage rows for a user into the numbers the dashboard shows. */
-export async function usageSummary(userId: string, sinceHours = 24): Promise<UsageSummary> {
-  const since = new Date(Date.now() - sinceHours * 3_600_000);
-  const logs = await prisma.usageLog.findMany({
-    where: { userId, createdAt: { gte: since } },
-    select: {
-      operation: true,
-      creditsUsed: true,
-      latencyMs: true,
-      cacheHit: true,
-      success: true,
-      provider: true,
-    },
-  });
-
-  const byOperation: UsageSummary["byOperation"] = {};
-  const providerStats: Record<string, { calls: number; ok: number }> = {};
-  const latencies: number[] = [];
-  let credits = 0;
+export function usageSummary(): UsageSummary {
+  const operations: UsageSummary["byOperation"] = {};
+  const everyLatency: number[] = [];
+  let requests = 0;
   let errors = 0;
   let cacheHits = 0;
 
-  for (const log of logs) {
-    credits += log.creditsUsed;
-    if (!log.success) errors++;
-    if (log.cacheHit) cacheHits++;
-    latencies.push(log.latencyMs);
+  for (const [operation, stats] of byOperation) {
+    requests += stats.requests;
+    errors += stats.errors;
+    cacheHits += stats.cacheHits;
+    everyLatency.push(...stats.latencies);
 
-    const op = (byOperation[log.operation] ??= { requests: 0, credits: 0, avgLatencyMs: 0 });
-    op.requests++;
-    op.credits += log.creditsUsed;
-    op.avgLatencyMs += log.latencyMs;
-
-    if (log.provider) {
-      for (const name of log.provider.split("+")) {
-        const stat = (providerStats[name] ??= { calls: 0, ok: 0 });
-        stat.calls++;
-        if (log.success) stat.ok++;
-      }
-    }
-  }
-
-  for (const op of Object.values(byOperation)) {
-    op.avgLatencyMs = op.requests > 0 ? Math.round(op.avgLatencyMs / op.requests) : 0;
-  }
-
-  const providerSuccessRate: UsageSummary["providerSuccessRate"] = {};
-  for (const [name, stat] of Object.entries(providerStats)) {
-    providerSuccessRate[name] = {
-      calls: stat.calls,
-      successRate: stat.calls > 0 ? Number((stat.ok / stat.calls).toFixed(3)) : 0,
+    const sorted = [...stats.latencies].sort((a, b) => a - b);
+    operations[operation] = {
+      requests: stats.requests,
+      avgLatencyMs: sorted.length
+        ? Math.round(sorted.reduce((sum, ms) => sum + ms, 0) / sorted.length)
+        : 0,
+      p95LatencyMs: percentile(sorted, 95),
     };
   }
 
-  latencies.sort((a, b) => a - b);
+  const providers: UsageSummary["providerSuccessRate"] = {};
+  for (const [name, entry] of providerCalls) {
+    providers[name] = {
+      calls: entry.calls,
+      successRate: entry.calls ? Number((entry.ok / entry.calls).toFixed(3)) : 0,
+    };
+  }
+
+  everyLatency.sort((a, b) => a - b);
 
   return {
-    window: `${sinceHours}h`,
-    totals: { requests: logs.length, credits, errors, cacheHits },
-    byOperation,
-    providerSuccessRate,
-    cacheHitRate: logs.length > 0 ? Number((cacheHits / logs.length).toFixed(3)) : 0,
-    errorRate: logs.length > 0 ? Number((errors / logs.length).toFixed(3)) : 0,
-    p50LatencyMs: percentile(latencies, 50),
-    p95LatencyMs: percentile(latencies, 95),
+    uptimeSeconds: Math.round((Date.now() - startedAt) / 1000),
+    totals: { requests, errors, cacheHits },
+    byOperation: operations,
+    providerSuccessRate: providers,
+    cacheHitRate: requests ? Number((cacheHits / requests).toFixed(3)) : 0,
+    errorRate: requests ? Number((errors / requests).toFixed(3)) : 0,
+    p50LatencyMs: percentile(everyLatency, 50),
+    p95LatencyMs: percentile(everyLatency, 95),
   };
 }

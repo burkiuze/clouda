@@ -9,7 +9,6 @@ import {
   shapeResult,
 } from "@/lib/api/shapes";
 import { searchWeb } from "@/lib/search/engine";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +43,7 @@ const MAX_QUERIES = 10;
  * rest — it comes back with its own error inside the batch.
  */
 export const POST = withApi(
-  { operation: "search", estimateCredits: CREDITS.search * MAX_QUERIES },
+  { operation: "search" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<BatchBody>(req);
 
@@ -92,14 +91,7 @@ export const POST = withApi(
       queries.map(async (query) => {
         try {
           const result = await searchWeb(query, options);
-          const cost = result.cacheHit
-            ? 0
-            : options.includeContent
-              ? CREDITS.search
-              : CREDITS.searchNoContent;
-
           return {
-            cost,
             count: result.results.length,
             providers: result.provider,
             payload: {
@@ -117,7 +109,6 @@ export const POST = withApi(
           // queries have already been paid for and answered.
           const error = err instanceof CloudaError ? err : null;
           return {
-            cost: 0,
             count: 0,
             providers: null,
             payload: {
@@ -142,10 +133,9 @@ export const POST = withApi(
         succeeded: answers.filter((a) => !("error" in a.payload)).length,
         searches: answers.map((a) => a.payload),
       },
-      creditsUsed: answers.reduce((sum, a) => sum + a.cost, 0),
       resultCount: answers.reduce((sum, a) => sum + a.count, 0),
       provider: providers || "none",
-      cacheHit: answers.every((a) => a.cost === 0),
+      cacheHit: answers.every((a) => "cached" in a.payload && a.payload.cached === true),
       steps: answers.length,
       label: `batch:${queries.length}`,
     };

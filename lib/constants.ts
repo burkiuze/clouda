@@ -1,92 +1,10 @@
-export const SIGNUP_FREE_CREDITS = Number(process.env.SIGNUP_FREE_CREDITS ?? 2000);
-
-export const API_KEY_PREFIX = "cld_live_";
-
 /**
- * Capabilities are opt-in per API key. Web search is deliberately absent: it
- * is always available on every key, because it is the base of the product.
- */
-export const CAPABILITIES = ["research", "browse", "monitor", "citations", "social"] as const;
-export type Capability = (typeof CAPABILITIES)[number];
-
-export const CAPABILITY_LABELS: Record<Capability, { title: string; description: string }> = {
-  research: {
-    title: "Deep Research",
-    description:
-      "Soruyu alt sorulara böler, çok turlu arama yapar, kaynakları karşılaştırır ve kaynaklı rapor üretir.",
-  },
-  browse: {
-    title: "Browser Agent",
-    description:
-      "Sayfaları açar, bağlantıları takip eder, sayfalama yapar ve sayfa içinde bilgi arar.",
-  },
-  monitor: {
-    title: "Web Monitoring",
-    description: "URL ya da arama sorgusunu izler, değişiklikte webhook ile bildirir.",
-  },
-  social: {
-    title: "Social & Video",
-    description:
-      "Açık sosyal platformlarda (Mastodon, Lemmy) arar ve YouTube video sonuçlarını getirir; elindeki video adresleri için başlık/kanal bilgisi döner.",
-  },
-  citations: {
-    title: "Citations & Doğrulama",
-    description:
-      "İddiaları kaynaklarla eşler, çelişkileri işaretler ve her iddia için güven skoru üretir.",
-  },
-};
-
-/**
- * Credit costs. Search is the unit of account at 2 credits, and everything
- * else is priced in multiples of it against the work it actually does — a
- * research run is many searches plus many page fetches, a browser step is one
- * fetch. The whole table moves together: pricing one operation without the
- * others would make the ratios lie about the cost.
+ * Values the UI and the docs read.
  *
- * At this rate the 2000 free credits are about a thousand searches.
+ * What used to live here — free-credit grants, an API key prefix, per-key
+ * capabilities and a price for every operation — described a metered service.
+ * A tool you run yourself meters nothing and grants you everything.
  */
-export const CREDITS = {
-  /** Full search: discovery across every source plus page extraction. */
-  search: 2,
-  /**
-   * Discovery only, when the caller asked for no page content. It is most of
-   * the value and a fraction of the work — no page is fetched — so charging
-   * the full rate for it would be charging for work not done.
-   */
-  searchNoContent: 1,
-  /** Charged once per research run, plus perStep for each search round. */
-  researchBase: 8,
-  researchPerSearch: 2,
-  browseBase: 2,
-  browsePerStep: 1,
-  monitorCheck: 1,
-  citations: 2,
-  /** Social and video discovery: several APIs, no page extraction. */
-  social: 2,
-  /** Extraction is one fetch per URL and no discovery, so it is cheaper than search. */
-  extractBase: 1,
-  extractPerUrl: 1,
-  /**
-   * Reranking and chunking touch no network at all: they are computation over
-   * text the caller already has, answered in milliseconds. Charging them the
-   * search rate would price the work we did not do. They are not free, because
-   * they still cost a request, authentication and CPU.
-   */
-  rerank: 1,
-  chunk: 1,
-  /**
-   * A live-data lookup is one small JSON call to one source, usually answered
-   * from a shared cache, with nothing extracted and nothing ranked. It is the
-   * cheapest network operation here and priced accordingly.
-   */
-  data: 1,
-  /**
-   * Mapping a site reads its own index — one or two requests where a crawl
-   * would be hundreds — so it is priced like a single fetch however many URLs
-   * come back.
-   */
-  map: 1,
-} as const;
 
 /**
  * How many sources a general query fans out to, for the marketing copy.
@@ -116,9 +34,6 @@ export const TOTAL_SOURCE_COUNT = 20;
  * are never added together.
  */
 export const NEWS_FEED_COUNT = 22;
-
-/** Backwards-compatible alias used by the dashboard and marketing copy. */
-export const CREDITS_PER_SEARCH = CREDITS.search;
 
 export const RESEARCH_DEPTHS = {
   quick: { rounds: 1, subQuestions: 3, maxSources: 10 },

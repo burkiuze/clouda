@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseFreshness, parseInt_ } from "@/lib/api/shapes";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import { fetchAndExtract } from "@/lib/search/extract";
 import { FEEDS, matchNews, newsCorpus, NewsItem } from "@/lib/search/newsroom";
@@ -54,7 +53,7 @@ function parseList(value: unknown, allowed: readonly string[], field: string): s
  * looking at a different corpus.
  */
 export const POST = withApi(
-  { operation: "search", estimateCredits: CREDITS.search },
+  { operation: "search" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<NewsBody>(req);
 
@@ -151,7 +150,6 @@ export const POST = withApi(
       },
       // A request that read article pages did the work of a search; one that
       // only read the corpus did not.
-      creditsUsed: wantsContent ? CREDITS.search : CREDITS.searchNoContent,
       resultCount: items.length,
       provider: "newsroom",
       cacheHit: !wantsContent,

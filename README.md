@@ -9,8 +9,16 @@
 
 Yapay zeka modelleri ve ajanları için **açık kaynak web yetenekleri**. Web arama,
 sayfa okuma, kaynaklı yanıt, araştırma, belge sıralama ve metin parçalama
-araçlarını aynı kod tabanında birleştirir. Kendi ortamında çalıştırabilir,
-REST API veya MCP üzerinden ajanlarına bağlayabilir ve yeni sağlayıcılar ekleyebilirsin.
+araçlarını aynı kod tabanında birleştirir.
+
+**Kendi makinende çalışır.** Hesap yok, API anahtarı yok, kredi yok, kota yok,
+veritabanı yok. Klonla, `npm ci`, `npm run dev` — ve aramaya başla. Ajanına
+REST ya da MCP üzerinden bağla.
+
+```bash
+git clone https://github.com/burkiuze/clouda.git
+cd clouda && npm ci && npm run dev
+```
 
 Clouda bir model eğitmez; modele dış dünyadan bilgi getiren ve bu bilgiyi
 kullanılabilir biçime dönüştüren araçlar sağlar.
@@ -22,16 +30,20 @@ Bunları peşinen söylemek, sonradan hayal kırıklığı yaşamandan iyidir.
 - **Google'ın indeksi değildir.** Kapsam, açık web indeksleri artı dikey
   kaynakların birleşimi kadardır. Datacenter IP'lerine açık, her şeyi gören
   ücretsiz bir arama kaynağı yok; olsaydı burada olurdu.
-- **Barındırılan bir hizmet değildir.** Bu depo, kendi sunucunda çalıştırdığın
-  kodu verir. Belirli bir barındırma sağlayıcısına bağlı değildir; `npm start`
-  ile herhangi bir Node.js sunucusunda çalışır.
+- **Barındırılan bir hizmet değildir.** Ortada satılan bir API yok; bu depo,
+  kendi sunucunda çalıştırdığın kodu verir. Belirli bir barındırma
+  sağlayıcısına bağlı değildir; `npm start` ile herhangi bir Node.js
+  sunucusunda çalışır.
+- **Çok kullanıcılı değildir.** Kimlik doğrulama, kota ve kullanım muhasebesi
+  bilinçli olarak yoktur. Bunu bir ekibe hizmet olarak sunacaksan o katmanı
+  önüne kendin koyman gerekir.
 - **Cevapları üretmez, alıntılar.** `/api/v1/answer` her cümleyi kaynağından
   birebir alır. Başarısızlık biçimi "işe yaramaz cevap"tır, "uydurulmuş cevap"
   değil.
 - **Sıfır bağımlılıklı bir kütüphane değildir.** Next.js uygulaması olarak
-  gelir; hesap, kredi ve kimlik doğrulama katmanı örnek bir API sunucusudur ve
-  kullanmak zorunda değilsin. Saf modüller (`lib/rank/`, `lib/search/`)
-  veritabanı olmadan da çalışır.
+  gelir. Ama çalışma zamanı bağımlılığı dörttür — `next`, `react`,
+  `react-dom`, `cheerio` — ve `lib/` altındaki modülleri kendi projene
+  doğrudan alabilirsin.
 
 ## Yetenekler
 
@@ -49,91 +61,56 @@ Bunları peşinen söylemek, sonradan hayal kırıklığı yaşamandan iyidir.
 | BM25 ve çeşitlilik ile belge sıralama | `lib/rank/bm25.ts` | `POST /api/v1/rerank` |
 | Yapıyı koruyarak metin parçalama | `lib/rank/chunk.ts` | `POST /api/v1/chunk` |
 | Sosyal kaynaklar | `lib/social/providers.ts` | `POST /api/v1/social` |
-| Değişiklik izleme | `lib/monitor/watcher.ts` | `POST /api/v1/monitors` |
 | MCP araçları | `lib/mcp/tools.ts` | `POST /api/mcp` |
 | Makine tarafından okunabilir API şeması | `app/api/v1/openapi/` | `GET /api/v1/openapi` |
 
 ## Kod yapısı
 
-- `lib/`: arama, sıralama, içerik çıkarımı ve diğer araçların uygulaması.
-- `lib/core/`: ortak HTTP, önbellek, süre sınırları, hata türleri ve kaynak sağlığı.
+- `lib/search/`: sağlayıcılar, keşif motoru, içerik çıkarımı, haber derlemi.
+- `lib/rank/`: BM25 sıralama ve yapı korumalı parçalama. Ağ kullanmaz.
+- `lib/data/`, `lib/crawl/`, `lib/research/`, `lib/social/`: canlı veri, site
+  haritası, çok turlu araştırma, sosyal kaynaklar.
+- `lib/core/`: ortak HTTP, önbellek, süre sınırları, hata türleri, devre kesici.
+- `lib/mcp/`: MCP araç tanımları.
 - `app/api/`: REST ve MCP arayüzleri.
-- `app/` ve `components/`: örnek web arayüzü, hesap ve API anahtarı yönetimi.
-- `prisma/`: PostgreSQL şeması ve migration dosyaları.
+- `app/` ve `components/`: yerel web arayüzü.
 - `tests/`: sıralama, arama, önbellek, HTTP ve hata davranışını doğrulayan testler.
 
-TypeScript, Next.js 15, React 19, Prisma/PostgreSQL ve Cheerio kullanılır.
-Bu depo henüz bağımsız yayımlanmış bir npm SDK'sı değildir. Saf hesaplama
-modülleri olan `lib/rank/` ağ veya veritabanı gerektirmez; arama ve HTTP
-entegrasyonu Node.js ortamında çalışır.
+TypeScript, Next.js 15, React 19 ve Cheerio. Çalışma zamanı bağımlılığı dört
+pakettir. Önbellek, kaynak sağlığı ve sayaçlar sürecin belleğindedir —
+veritabanı yoktur, dolayısıyla yeniden başlatınca sıfırlanırlar. Bu, tek
+süreçlik bir araç için doğru takas: soğuk başlangıç bir yavaş aramaya mal
+olur, PostgreSQL şartı ise ilk aramadan önce bir kuruluma.
 
-## Yerel kurulum
+Bu depo henüz bağımsız yayımlanmış bir npm SDK'sı değildir, ama `lib/`
+altındaki modülleri kendi projene doğrudan alabilirsin.
 
-Node.js 22 veya 24, npm ve tam API için PostgreSQL gerekir.
+## Kurulum
+
+Node.js 22 veya 24 ve npm. Başka hiçbir şey.
 
 ```bash
 git clone https://github.com/burkiuze/clouda.git
 cd clouda
 npm ci
-cp .env.example .env
-```
-
-`.env` içindeki örnek veritabanı adreslerini kendi PostgreSQL bağlantınla değiştir.
-Yerel bir kurulumun biçimi şöyledir:
-
-```dotenv
-DATABASE_URL="postgresql://clouda:YOUR_LOCAL_PASSWORD@localhost:5432/clouda"
-DIRECT_URL="postgresql://clouda:YOUR_LOCAL_PASSWORD@localhost:5432/clouda"
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="YOUR_GENERATED_SECRET"
-```
-
-Gizli anahtarı `openssl rand -base64 32` ile üret. `DATABASE_URL` uygulama
-bağlantısıdır; `DIRECT_URL` migration çalıştırabilen bağlantıdır. Yerelde aynı
-adres olabilirler. Bağlantı havuzu kullanıyorsan migration adresinin DDL
-çalıştırabilmesi gerekir.
-
-```bash
-npx prisma migrate deploy
 npm run dev
 ```
 
-Arayüz: `http://localhost:3000`. Kendi hesabını oluşturup panelden bir API
-anahtarı üretebilirsin. Hesap, yetenek izinleri ve kredi sayacı mevcut örnek
-API katmanının parçalarıdır; bunlar yerel veritabanında tutulur.
+`http://localhost:3000` açılır ve ana sayfadaki kutu doğrudan çalışır. Yapılandırma
+dosyası oluşturman gerekmez; `.env.example` içindeki her değişken bir şeyi açar ya
+da davranışı değiştirir, hiçbiri kurulum şartı değildir.
 
-Google ile giriş isteğe bağlıdır: kullanacaksan `GOOGLE_CLIENT_ID` ve
-`GOOGLE_CLIENT_SECRET` tanımla. E-posta/şifre ile giriş de vardır.
-`GITHUB_TOKEN`, GitHub arama sağlayıcısı için isteğe bağlıdır.
-`CRON_SECRET`, haber ve izleme zamanlayıcı uçlarını korur. Zamanlayıcıları kendi
-çalıştırma ortamında ayrıca kurmalısın.
-
-### Kendi kimliğinle çık
-
-| Değişken | Neden |
-| --- | --- |
-| `CLOUDA_CONTACT_EMAIL` | OpenAlex, iletişim adresi veren çağıranlara daha hızlı "polite pool"unu açar; SEC gerçek bir tarafı adlandıran User-Agent şart koşar. |
-| `CLOUDA_USER_AGENT` | Yukarıdakinden türetilen varsayılanı tamamen değiştirmek istersen. |
-| `NEXT_PUBLIC_APP_URL` | Panelin ve dokümanların bastığı örneklerin doğru adresi göstermesi için. |
-| `DIAG_TOKEN` | `/api/diag/selftest`'i açar. **Varsayılanı yoktur**: tanımlı değilse o uç yok sayılır. |
-
-İlk ikisi önemli. Varsayılanları bu projenin adresini taşır, yani tanımlamazsan
-çağrıların onun havuzunda birikir — ve eninde sonunda gelen hız sınırı, isteği
-yapana değil adresin sahibine düşer. Ciddi çalıştıracaksan kendi adresini yaz.
-
-Veritabanı olmadan saf hesaplama testleri ve kontrollü I/O testleri çalışır.
-Hesap ve anahtarla kullanılan HTTP API'si ise veritabanı gerektirir.
+Üretim için `npm run build && npm start`. Belirli bir barındırma hizmeti gerekmez.
 
 ## API kullanımı
 
-Aşağıdaki değişkeni kendi kurulumundan aldığın anahtarla tanımla:
+Kimlik doğrulama yoktur. Kendi makinende çalışan bir araçla aranda tören olmasının
+bir anlamı yok.
 
 ```bash
-export CLOUDA_API_KEY="YOUR_API_KEY"
 curl http://localhost:3000/api/v1/search \
-  -H "Authorization: Bearer $CLOUDA_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"query":"postgres index bloat","max_results":5,"include_content":false}'
+  -d '{"query":"postgres index bloat","search_depth":"fast"}'
 ```
 
 | Seçenek | Davranış |
@@ -145,15 +122,33 @@ curl http://localhost:3000/api/v1/search \
 | `include_domains` / `exclude_domains` | Adayları indirme ve birleştirme öncesinde süzer. |
 | `no_cache: true` | Yanıt ve sağlayıcı önbelleklerini okumaz veya yazmaz. |
 | `mode: "sources"` | İçerik indirmeden kaynak biçiminde yanıt verir. |
+| `mode: "claims"` | Sonuçlardan iddia çıkarır ve kaynaklarla eşler. |
 
 Tarihi bilinmeyen bir sonuç güncel olduğu iddiasıyla etiketlenmez; tarih alanı
 `null` kalır. `degraded_providers`, yanıt vermeyen veya son kayıtlı yanıtıyla
-kullanılan kaynakları açıklar. Ayrıntılı istek/yanıt şeması çalışan uygulamanın
-`/api/v1/openapi` ve `/docs` adreslerindedir.
+kullanılan kaynakları açıklar. Tam şema `/api/v1/openapi` ve `/docs` adreslerinde.
 
-MCP istemcisini `http://localhost:3000/api/mcp` adresine, aynı Bearer anahtarıyla
-bağla. Araç adları ve giriş şemaları `tools/list` yanıtından keşfedilir;
-uygulamaları `lib/mcp/tools.ts` içindedir.
+### Ağa açarsan
+
+`CLOUDA_TOKEN` tanımla. O andan itibaren her uç `Authorization: Bearer <token>`
+ister — REST de MCP de. Tanımlı değilken sunucu kendisine ulaşabilen herkese
+yanıt verir, ki localhost'ta o kişi sensin; 0.0.0.0'a bağladığın anda değildir.
+
+### MCP
+
+Ajan istemcini `http://localhost:3000/api/mcp` adresine bağla:
+
+```json
+{
+  "mcpServers": {
+    "clouda": { "type": "http", "url": "http://localhost:3000/api/mcp" }
+  }
+}
+```
+
+Sekiz araç: `clouda_search`, `clouda_news`, `clouda_extract`, `clouda_answer`,
+`clouda_data`, `clouda_map`, `clouda_rerank`, `clouda_chunk`. Şemaları
+`tools/list` yanıtından keşfedilir; uygulamaları `lib/mcp/tools.ts` içinde.
 
 ## Kaynak kapsamı
 
@@ -215,10 +210,9 @@ kaynak bilgisini korur.
 - Gerçek sağlayıcı hataları devre kesiciye kaydedilir. Geçerli ama boş bir
   yanıt hata sayılmaz; birleşik sağlayıcının çalışan alt kaynağı korunur.
 
-Bunlar uygulama içi bekleme bütçeleridir. API'nin toplam `took_ms` değeri kimlik
-doğrulama, kredi işlemleri ve çalışma ortamının maliyetlerini de içerir.
-İnternet gecikmesi, soğuk başlangıç ve kaynak kapsaması için sabit bir ms
-veya sonuç sayısı garantisi yoktur.
+Bunlar uygulama içi bekleme bütçeleridir; yanıttaki `took_ms` çalışma ortamının
+kendi maliyetlerini de içerir. İnternet gecikmesi, soğuk başlangıç ve kaynak
+kapsaması için sabit bir ms ya da sonuç sayısı garantisi yoktur.
 
 ### Tekrarlanabilir yerel ölçüm
 
@@ -259,16 +253,14 @@ npm run build
 npm start
 ```
 
-`npm test` ağ veya gerçek veritabanı kullanmaz. Saf modüller derlenerek test
+`npm test` ağ kullanmaz. Saf modüller derlenerek test
 edilir; entegrasyon testleri gerçek TypeScript modüllerini yükleyip yalnızca
 I/O sınırlarını denetimli karşılıklarla değiştirir. Önbellek ayrımı, eşzamanlı
 istekler, alan adı filtreleri, güncellik, süre sınırları ve hata toparlanması
 bu kapsamda doğrulanır.
 
-Mevcut `build` komutu veritabanı değişkenleri tanımlıysa migration betiğini de
-çalıştırır. Migration'ı derlemeden ayrı yönetmek için `npx prisma generate` ve
-`npx next build` komutlarını kullanabilirsin. Bir Node.js sunucusunda
-`npm start` ile çalıştırmak yeterlidir; belirli bir barındırma hizmeti zorunlu değildir.
+`npm run build && npm start` bir Node.js sunucusunda çalışmak için yeterlidir;
+belirli bir barındırma hizmeti zorunlu değildir.
 
 `/api/diag/selftest`, `DIAG_TOKEN` ile korunan canlı kontrol ucudur.
 **Varsayılan bir token yoktur**: değişken tanımlı değilse uç 404 döner. Çağrı
@@ -297,13 +289,13 @@ lisansları, projenin kaynak kodu lisansından ayrıdır.
 
 > **Marginalia ve ticari kullanım.** Marginalia'nın herkese açık API'si bu
 > projede daha önce **CC-BY-NC-SA 4.0** olarak belgelenmişti: atıf zorunlu ve
-> **ticari kullanıma kapalı**. Bu, belirsiz bir ayrıntı değil somut bir kısıt —
-> Marginalia iki genel web indeksinden biri, yani açık web katmanının yarısı, ve
-> bu depodaki site kredi satıyor. Ücretli trafiği bu kaynağa dayandırmadan önce
+> **ticari kullanıma kapalı**. Kendin için çalıştırıyorsan bu seni bağlamaz.
+> Ama Marginalia iki genel web indeksinden biri — açık web katmanının yarısı —
+> ve bu kodu ticari bir işin parçası yaparsan kısıt seni bulur. O noktada
 > [sağlayıcının API açıklamasını](https://about.marginalia-search.com/article/api/)
 > teyit et; koşullar hâlâ ticari kullanıma kapalıysa ya Marginalia ile ayrı bir
 > izin konuş, ya `MARGINALIA_API_KEY` ile kendi anlaşmalı anahtarını kullan, ya
-> da bu kaynağı ücretsiz kademeyle sınırla.
+> da o kaynağı devre dışı bırak.
 >
 > Kod tabanı yeni API adresine (`api2.marginalia-search.com`) taşındığı için
 > koşulların değişmiş olması da mümkün. Bu satır, "değişmiş olabilir" demek

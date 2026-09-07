@@ -1,215 +1,112 @@
 import Link from "next/link";
 import DemoSearch from "@/components/DemoSearch";
-import CodeSnippet from "@/components/CodeSnippet";
-import { CREDITS, NEWS_FEED_COUNT, TOTAL_SOURCE_COUNT } from "@/lib/constants";
+import { NEWS_FEED_COUNT, TOTAL_SOURCE_COUNT } from "@/lib/constants";
+import { publicBaseUrl } from "@/lib/config";
 
-const features = [
-  {
-    title: "Modelleri taze web bağlamıyla besleyin",
-    body: "Canlı web verisini getirir, ilgili içeriği çıkarır ve modeller için yapılandırılmış biçimde döner; ajanlar uydurmadan, gerçeklerin üzerinden akıl yürütür.",
-    active: true,
-  },
-  {
-    title: "Sayfaları okunabilir metne çevirir",
-    body: "Menü, reklam ve script kalabalığı ayıklanır, sayfanın kendi karakter kodlaması korunur. Modeline yalnızca gerçek içerik gider.",
-    active: false,
-  },
-  {
-    title: "Kredi bazlı, tahmin edilebilir maliyet",
-    body: `Her arama isteği ${CREDITS.search} kredi. Sürpriz fatura yok; kullanımını ve kalan kredini panelden anlık takip edersin.`,
-    active: false,
-  },
-];
+/**
+ * The home page of a tool rather than the front of a product.
+ *
+ * It used to sell: a hero, feature tiles, a free-credit offer and a sign-up
+ * button. There is nothing to sell and nobody to sign up, so the page leads
+ * with the thing itself — a search box that works on load — and then answers
+ * the only two questions left: what can it do, and how do I drive it from my
+ * own code.
+ */
 
-const stats = [
-  { value: "2.000", label: "her yeni hesaba ücretsiz kredi" },
-  { value: `${CREDITS.search} kredi`, label: "arama isteği başına sabit fiyat" },
-  { value: `${TOTAL_SOURCE_COUNT} kaynak`, label: "sorunun türüne göre paralel sorgulanır" },
-  { value: `${NEWS_FEED_COUNT} yayıncı`, label: "haber derlemi arka planda taze tutulur" },
+const capabilities = [
+  { name: "search", path: "/api/v1/search", what: "Web araması, kaynak birleştirme, içerik çıkarımı" },
+  { name: "news", path: "/api/v1/news", what: `${NEWS_FEED_COUNT} yayıncı beslemesinden canlı haber` },
+  { name: "data", path: "/api/v1/data", what: "Hava, kur, kripto, hisse, deprem, gösterge — sayı olarak" },
+  { name: "answer", path: "/api/v1/answer", what: "Yalnızca alıntıya dayalı, kaynaklı cevap" },
+  { name: "extract", path: "/api/v1/extract", what: "Adresi modele hazır metne çevirir" },
+  { name: "map", path: "/api/v1/map", what: "Bir sitenin bütün adresleri, kendi haritasından" },
+  { name: "research", path: "/api/v1/research", what: "Çok turlu araştırma, kaynaklı rapor" },
+  { name: "browse", path: "/api/v1/browse", what: "Sayfa açar, bağlantı takip eder" },
+  { name: "rerank", path: "/api/v1/rerank", what: "Kendi belgelerini sıralar (BM25 + MMR), ağ kullanmaz" },
+  { name: "chunk", path: "/api/v1/chunk", what: "Yapıyı koruyarak metni parçalara böler" },
+  { name: "social", path: "/api/v1/social", what: "Mastodon, Lemmy, YouTube" },
 ];
 
 export default function Home() {
+  const base = publicBaseUrl();
+
   return (
     <>
-      {/* Split hero */}
-      <section className="grid grid-cols-1 lg:grid-cols-2">
-        <div className="flex items-center bg-clouda-bg px-6 py-16 sm:px-12 lg:px-16 lg:py-24">
-          <div className="max-w-xl">
-            <p className="eyebrow">clouda &amp; arama api</p>
-            <h1 className="display mt-8 text-[44px] sm:text-6xl lg:text-[68px]">
-              Yapay zeka ajanları için eksiksiz web erişimi
-            </h1>
-            <p className="prose-serif mt-8">
-              Clouda, modellerinin ve ajanlarının gerçek zamanlı web&apos;e erişmesini sağlayan tek
-              bir API&apos;dir. Arar, sayfaların içeriğini çıkarır ve doğrudan modele
-              verilebilecek temiz sonuçlar döner.
-            </p>
-            <div className="mt-9 flex flex-wrap gap-3">
-              <Link href="/signup" className="btn-dark">
-                Ücretsiz başla
-              </Link>
-              <Link href="/docs" className="btn-outline">
-                API dokümanı
-              </Link>
-            </div>
-            <div className="mt-12 space-y-1.5">
-              <p className="eyebrow-plain">2000 ücretsiz kredi. kredi kartı gerekmez.</p>
-              <p className="eyebrow-plain">tek uç nokta, saf json, sağlayıcı kilidi yok</p>
-            </div>
-          </div>
-        </div>
+      <section className="border-b border-clouda-border bg-clouda-bg">
+        <div className="mx-auto max-w-[1000px] px-6 py-16 lg:py-24">
+          <p className="eyebrow">clouda north · açık kaynak</p>
+          <h1 className="display mt-6 text-[40px] leading-[1.05] sm:text-6xl">
+            Modeline canlı web ver.
+            <br />
+            Kendi makinende.
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-clouda-muted">
+            Arama, sayfa okuma, kaynaklı cevap, canlı veri ve belge sıralama — hepsi tek
+            kod tabanında. Hesap yok, anahtar yok, kota yok. Klonla, çalıştır, kullan.
+          </p>
 
-        <div
-          className="relative flex items-center justify-center bg-clouda-panel bg-cover bg-center px-6 py-16 lg:px-12"
-          style={{ backgroundImage: "url(/hero.jpg)" }}
-        >
-          <div id="urun" className="w-full max-w-xl">
+          <div className="mt-10">
             <DemoSearch />
           </div>
-        </div>
-      </section>
 
-      {/* Product section */}
-      <section className="border-t border-clouda-border bg-white">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 lg:px-10">
-          <p className="eyebrow-plain">clouda search api</p>
-          <h2 className="display mt-6 max-w-3xl text-[36px] sm:text-5xl">
-            Tek uç noktalı, üretime hazır arama altyapısı
-          </h2>
-          <p className="prose-serif mt-7 max-w-2xl">
-            SDK kurulumu, arama sağlayıcısı hesabı ya da altyapı yönetimi yok. Anahtarını al,
-            çağır. Sonuç başlık, bağlantı, özet ve sayfadan çıkarılmış okunabilir metinle gelir.
+          <p className="mt-4 text-sm text-clouda-muted">
+            Bu kutu, çalışan kurulumunun kendi arama motorunu kullanıyor —{" "}
+            {TOTAL_SOURCE_COUNT} kaynak, sorunun türüne göre paralel sorgulanır.
           </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link href="/signup" className="btn-dark">
-              Ücretsiz başla
-            </Link>
-            <Link href="/docs" className="btn-outline">
-              Dokümantasyonu incele
-            </Link>
-          </div>
+        </div>
+      </section>
 
-          <div className="mt-16 rounded-card border border-clouda-border bg-clouda-panel p-6 sm:p-12">
-            <div className="mx-auto max-w-3xl rounded-card border border-clouda-border bg-white p-6">
-              <div className="rounded-btn bg-clouda-bg px-4 py-3 font-mono text-sm">
-                clouda.search(<span className="text-clouda-muted">&quot;sorgun&quot;</span>)
-              </div>
-              <p className="mt-6 font-mono text-xs text-clouda-muted">Found sources · 180 ms</p>
-              <div className="mt-4 space-y-5">
-                {[62, 78, 48].map((w, i) => (
-                  <div key={i}>
-                    <div className="flex items-center gap-3">
-                      <span className="grid h-5 w-5 shrink-0 place-items-center bg-clouda-indigo text-white">
-                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                          <path
-                            d="M2.5 6.5l2.5 2.5 4.5-5"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </span>
-                      <span className="h-2.5 rounded-full bg-clouda-border" style={{ width: `${w}%` }} />
-                    </div>
-                    <p className="mt-3 pl-8 font-mono text-xs text-clouda-muted">Relevant chunks</p>
-                    <div className="mt-2 flex gap-2 pl-8">
-                      {[74, 52, 62].map((cw, j) => (
-                        <span
-                          key={j}
-                          className="h-5 rounded bg-clouda-indigoSoft"
-                          style={{ width: `${cw}px` }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+      <section className="border-b border-clouda-border">
+        <div className="mx-auto max-w-[1000px] px-6 py-16">
+          <p className="eyebrow-plain">uçlar</p>
+          <h2 className="display mt-3 text-3xl">Ne yapabilir</h2>
+          <p className="mt-4 max-w-2xl text-clouda-muted">
+            Hepsi <code className="font-mono text-sm text-clouda-ink">POST</code>, hepsi JSON.
+            Aynı yetenekler <Link href="/docs#mcp" className="underline">MCP</Link> üzerinden
+            ajanına doğrudan bağlanır.
+          </p>
 
-          <div className="mt-14 grid grid-cols-1 gap-10 md:grid-cols-3">
-            {features.map((f) => (
-              <div
-                key={f.title}
-                className={`border-t-2 pt-6 ${f.active ? "border-clouda-indigo" : "border-clouda-border"}`}
-              >
-                <div className="flex gap-3">
-                  <span className="mt-2 block h-2.5 w-2.5 shrink-0 bg-clouda-indigo" />
-                  <div>
-                    <h3 className="text-xl font-medium tracking-[-0.02em] text-clouda-ink">
-                      {f.title}
-                    </h3>
-                    <p className="mt-3 leading-relaxed text-clouda-muted">{f.body}</p>
-                  </div>
-                </div>
+          <div className="mt-8 divide-y divide-clouda-border border-y border-clouda-border">
+            {capabilities.map((c) => (
+              <div key={c.name} className="flex flex-col gap-1 py-4 sm:flex-row sm:items-baseline sm:gap-6">
+                <code className="font-mono text-sm text-clouda-ink sm:w-64 sm:shrink-0">
+                  {c.path}
+                </code>
+                <span className="text-sm text-clouda-muted">{c.what}</span>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Integration */}
-      <section className="border-t border-clouda-border bg-clouda-bg">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 lg:px-10">
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
-            <div>
-              <p className="eyebrow">entegrasyon</p>
-              <h2 className="display mt-6 text-[36px] sm:text-5xl">
-                Tek istek, her dilde çalışır
-              </h2>
-              <p className="prose-serif mt-7 max-w-md">
-                curl, Node ya da Python — fark etmez. Clouda&apos;yı mevcut ajanına, RAG
-                pipeline&apos;ına ya da chatbotuna dakikalar içinde bağla.
-              </p>
-              <Link href="/docs" className="btn-outline mt-9">
-                API referansı
-              </Link>
-            </div>
-            <CodeSnippet />
-          </div>
-        </div>
-      </section>
+      <section className="bg-clouda-bg">
+        <div className="mx-auto max-w-[1000px] px-6 py-16">
+          <p className="eyebrow-plain">başlangıç</p>
+          <h2 className="display mt-3 text-3xl">Çalıştır</h2>
 
-      {/* Stats */}
-      <section className="border-t border-clouda-border bg-white">
-        <div className="mx-auto max-w-[1400px] px-6 py-20 lg:px-10">
-          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {stats.map((s) => (
-              <div key={s.label} className="border-t-2 border-clouda-ink pt-6">
-                <p className="display text-5xl">{s.value}</p>
-                <p className="mt-4 text-clouda-muted">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+          <pre className="mt-6 overflow-x-auto rounded-xl border border-clouda-border bg-white p-5 font-mono text-[13px] leading-relaxed text-clouda-ink">
+{`git clone https://github.com/burkiuze/clouda.git
+cd clouda && npm ci
+npm run dev`}
+          </pre>
 
-      {/* CTA */}
-      <section className="grid grid-cols-1 border-t border-clouda-border lg:grid-cols-2">
-        <div className="flex items-center bg-clouda-bg px-6 py-20 sm:px-12 lg:px-16">
-          <div className="max-w-lg">
-            <h2 className="display text-[36px] sm:text-5xl">
-              Bugün 2000 ücretsiz kredi ile başla
-            </h2>
-            <p className="prose-serif mt-6">
-              Kredi kartı gerekmez. Kayıt ol, API anahtarını oluştur, ilk aramanı yap.
-            </p>
-            <div className="mt-9 flex flex-wrap gap-3">
-              <Link href="/signup" className="btn-dark">
-                Hesap oluştur
-              </Link>
-              <Link href="/pricing" className="btn-outline">
-                Fiyatlandırma
-              </Link>
-            </div>
-          </div>
+          <p className="mt-6 text-clouda-muted">
+            Veritabanı gerekmez, yapılandırma gerekmez. Sonra:
+          </p>
+
+          <pre className="mt-4 overflow-x-auto rounded-xl border border-clouda-border bg-white p-5 font-mono text-[13px] leading-relaxed text-clouda-ink">
+{`curl ${base}/api/v1/search \\
+  -H "Content-Type: application/json" \\
+  -d '{"query":"postgres index bloat","search_depth":"fast"}'`}
+          </pre>
+
+          <p className="mt-6 text-sm text-clouda-muted">
+            Ağa açacaksan <code className="font-mono text-clouda-ink">CLOUDA_TOKEN</code>{" "}
+            tanımla; o zaman her uç{" "}
+            <code className="font-mono text-clouda-ink">Authorization: Bearer</code> ister.
+            Ayrıntılar <Link href="/docs" className="underline">dokümantasyonda</Link>.
+          </p>
         </div>
-        <div
-          className="min-h-[280px] bg-cover bg-center"
-          style={{ backgroundImage: "url(/cta.jpg)" }}
-          aria-hidden="true"
-        />
       </section>
     </>
   );

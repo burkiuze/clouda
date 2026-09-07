@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { searchWeb } from "@/lib/search/engine";
 import { consume, LIMITS } from "@/lib/core/limits";
 import { requestActor } from "@/lib/core/request";
-import { recordSecurityEvent } from "@/lib/core/audit";
 import { toCloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +17,6 @@ async function runDemoSearch(req: NextRequest, query: string | undefined) {
   const actor = requestActor(req);
   const verdict = await consume(LIMITS.demoSearch, actor);
   if (!verdict.allowed) {
-    await recordSecurityEvent({ kind: "demo_throttled", actorHash: actor });
     return NextResponse.json(
       {
         error: "rate_limited",

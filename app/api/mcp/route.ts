@@ -1,14 +1,8 @@
 import { CLOUDA_RELEASE } from "@/lib/version";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  ApiContext,
-  enforceRateLimit,
-  refund,
-  reserve,
-  resolveKey,
-} from "@/lib/api/gateway";
+import { ApiContext, tokenConfigured } from "@/lib/api/gateway";
 import { findTool, MCP_TOOLS } from "@/lib/mcp/tools";
-import { CloudaError, toCloudaError } from "@/lib/core/errors";
+import { toCloudaError } from "@/lib/core/errors";
 import { recordUsage } from "@/lib/core/metrics";
 import { offload } from "@/lib/core/offload";
 
@@ -98,39 +92,22 @@ async function callTool(
     return toolFailure(id, `Bilinmeyen araç: ${name || "(isim yok)"}`);
   }
 
-  if (tool.capability && !ctx.capabilities.includes(tool.capability)) {
-    return toolFailure(
-      id,
-      `Bu anahtarda "${tool.capability}" özelliği açık değil. Clouda panelinden etkinleştirilebilir.`
-    );
-  }
-
   const args =
     params.arguments && typeof params.arguments === "object"
       ? (params.arguments as Record<string, unknown>)
       : {};
 
   const started = Date.now();
-  let reserved = 0;
 
   try {
-    await enforceRateLimit(ctx);
-    await reserve(ctx, tool.estimate);
-    reserved = tool.estimate;
-
-    const { text, credits } = await tool.run(args, ctx);
-    const remaining = await refund(ctx, reserved - credits);
-    reserved = 0;
-
+    const { text } = await tool.run(args, ctx);
     const latencyMs = Date.now() - started;
+
     offload(() =>
       recordUsage({
-        userId: ctx.userId,
-        apiKeyId: ctx.apiKeyId,
         operation: "search",
         query: `mcp:${name}`,
         resultCount: 0,
-        creditsUsed: credits,
         provider: "mcp",
         latencyMs,
         success: true,
@@ -139,23 +116,16 @@ async function callTool(
 
     return rpcResult(id, {
       content: [{ type: "text", text }],
-      // Structured alongside the prose, so a client that wants to meter usage
-      // does not have to parse it back out of the text.
-      structuredContent: { credits_used: credits, credits_remaining: remaining, took_ms: latencyMs },
+      structuredContent: { took_ms: latencyMs },
     });
   } catch (err) {
-    if (reserved > 0) await refund(ctx, reserved).catch(() => {});
     const error = toCloudaError(err);
 
     offload(() =>
       recordUsage({
-        userId: ctx.userId,
-        apiKeyId: ctx.apiKeyId,
         operation: "search",
         query: `mcp:${name}`,
         resultCount: 0,
-        creditsUsed: 0,
-        provider: "mcp",
         latencyMs: Date.now() - started,
         success: false,
         errorCode: error.code,
@@ -197,7 +167,7 @@ export async function POST(req: NextRequest) {
           "clouda_search, olan biteni öğrenmek için clouda_news, elindeki adresleri okumak " +
           "için clouda_extract, doğrulanabilir cevap için clouda_answer kullan. " +
           "clouda_rerank ve clouda_chunk ağ kullanmaz ve kendi metinlerin üzerinde çalışır. " +
-          "Authorization: Bearer cld_live_... başlığı gerekir.",
+          "Yerel çalıştırmada kimlik doğrulama gerekmez.",
       });
     }
 
@@ -229,14 +199,15 @@ export async function POST(req: NextRequest) {
       return rpcResult(id, { prompts: [] });
 
     case "tools/call": {
-      let ctx: ApiContext;
-      try {
-        ctx = await resolveKey(req);
-      } catch (err) {
-        const error = err instanceof CloudaError ? err : toCloudaError(err);
-        return rpcError(id, RPC.unauthorized, error.message, { code: error.code });
+      const token = process.env.CLOUDA_TOKEN ?? "";
+      if (token) {
+        const header = req.headers.get("authorization") ?? "";
+        const supplied = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+        if (supplied !== token) {
+          return rpcError(id, RPC.unauthorized, "Geçerli bir Bearer token gerekiyor.");
+        }
       }
-      return callTool(id, params, ctx);
+      return callTool(id, params, { policy: {} });
     }
 
     default:
@@ -250,12 +221,12 @@ export async function GET() {
     server: SERVER_INFO,
     protocol: { preferred: PROTOCOL_VERSION, supported: SUPPORTED_PROTOCOLS },
     transport: "streamable-http (POST, JSON-RPC 2.0)",
-    authentication: "Authorization: Bearer cld_live_...",
+    authentication: tokenConfigured()
+      ? "Authorization: Bearer <CLOUDA_TOKEN>"
+      : "gerekmiyor (CLOUDA_TOKEN tanımlı değil)",
     tools: MCP_TOOLS.map((t) => ({
       name: t.name,
       description: t.description,
-      capability: t.capability ?? "her zaman açık",
-      max_credits: t.estimate,
     })),
   });
 }

@@ -1,86 +1,64 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { missingAuthConfig } from "@/lib/config";
 import { healthSnapshot } from "@/lib/core/breaker";
+import { cacheStats } from "@/lib/core/cache";
+import { usageSummary } from "@/lib/core/metrics";
+import { tokenConfigured } from "@/lib/api/gateway";
+import { NEWS_FEED_COUNT, TOTAL_SOURCE_COUNT } from "@/lib/constants";
 
 /**
- * One request that answers "is this deployment actually wired up?".
- * Configuration problems are otherwise only visible as a failed sign-up, so
- * this reports each dependency separately instead of a single pass/fail.
+ * One request that answers "is this thing working?".
+ *
+ * It used to check a database connection and a session secret, because without
+ * those the product could not sign anyone in. There is nothing to sign in to
+ * now and nothing to configure before searching, so the question has changed:
+ * not "is it wired up" but "what has it seen, and which sources are answering".
  */
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-interface Check {
-  ok: boolean;
-  detail: string;
-}
-
-async function checkDatabase(): Promise<Check> {
-  if (!process.env.DATABASE_URL) {
-    return { ok: false, detail: "DATABASE_URL tanımlı değil." };
-  }
-  const startedAt = Date.now();
-  try {
-    const [{ users }] = await prisma.$queryRaw<{ users: bigint }[]>`
-      SELECT count(*)::bigint AS users FROM "User"
-    `;
-    return {
-      ok: true,
-      detail: `Bağlandı (${Date.now() - startedAt} ms), ${Number(users)} kullanıcı kayıtlı.`,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, detail: message.split("\n")[0].slice(0, 300) };
-  }
-}
-
 export async function GET() {
-  const database = await checkDatabase();
-  const missing = missingAuthConfig();
-
-  const checks = {
-    database,
-    sessionSecret: {
-      ok: Boolean(process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET),
-      detail: "Oturum çerezlerini imzalar (NEXTAUTH_SECRET).",
-    },
-    googleOAuth: {
-      ok: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
-      detail: "Yalnızca Google ile giriş için gerekir.",
-    },
-    searchProvider: {
-      // Search runs entirely on open sources; there is no key to configure.
-      ok: true,
-      detail: "Açık kaynaklar üzerinden çalışıyor, anahtar gerekmiyor.",
-    },
-  };
-
-  // Sign-up and login need the database and a session secret; everything else
-  // degrades rather than breaks, so it does not decide the overall status.
-  const ready = checks.database.ok && checks.sessionSecret.ok;
-
-  // What this instance has learned about each source it has called: success
-  // rate, average latency, and whether its circuit is currently open. Empty on
-  // a cold instance, which is a fact about the report rather than about the
-  // sources — the breaker's memory is per-instance and deliberately so.
   const sources = healthSnapshot();
+  const usage = usageSummary();
 
-  return NextResponse.json(
-    {
-      ready,
-      checks,
-      sources: {
-        observed: sources.length,
-        open_circuits: sources.filter((s) => s.state === "open").map((s) => s.source),
-        detail: sources,
-        note:
-          "Bu tablo yalnızca bu sunucu örneğinin gördüklerini yansıtır; devre kesici " +
-          "durumu örnekler arasında paylaşılmaz ve soğuk başlangıçta sıfırlanır.",
-      },
-      missing: missing.map((m) => m.name),
+  return NextResponse.json({
+    ok: true,
+    version: process.env.npm_package_version ?? "0.2.0",
+    uptime_seconds: usage.uptimeSeconds,
+
+    // Nothing is required to run this. Listing what is optional and whether it
+    // is set is more useful than a pass/fail on things that cannot fail.
+    configuration: {
+      shared_token: tokenConfigured(),
+      searxng: Boolean(process.env.SEARXNG_BASE_URL),
+      marginalia_key: Boolean(process.env.MARGINALIA_API_KEY),
+      github_token: Boolean(process.env.GITHUB_TOKEN),
+      contact_email: Boolean(process.env.CLOUDA_CONTACT_EMAIL),
     },
-    { status: ready ? 200 : 503 }
-  );
+
+    sources: {
+      configured: TOTAL_SOURCE_COUNT,
+      news_feeds: NEWS_FEED_COUNT,
+      observed: sources.length,
+      open_circuits: sources.filter((s) => s.state === "open").map((s) => s.source),
+      detail: sources,
+    },
+
+    cache: cacheStats(),
+
+    usage: {
+      requests: usage.totals.requests,
+      errors: usage.totals.errors,
+      error_rate: usage.errorRate,
+      cache_hit_rate: usage.cacheHitRate,
+      p50_latency_ms: usage.p50LatencyMs,
+      p95_latency_ms: usage.p95LatencyMs,
+      by_operation: usage.byOperation,
+      provider_success_rate: usage.providerSuccessRate,
+    },
+
+    note:
+      "Kaynak sağlığı, önbellek ve sayaçlar bu sürecin belleğindedir; " +
+      "yeniden başlatınca sıfırlanır.",
+  });
 }

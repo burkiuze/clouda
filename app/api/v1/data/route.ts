@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseInt_ } from "@/lib/api/shapes";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 import {
   DATA_KINDS,
@@ -69,7 +68,7 @@ function required(value: string | undefined, field: string): string {
  * usually served from a shared cache, and nothing is extracted or ranked.
  */
 export const POST = withApi(
-  { operation: "search", estimateCredits: CREDITS.data },
+  { operation: "search" },
   async (req: NextRequest) => {
     const body = await readJson<Body>(req);
 
@@ -143,7 +142,6 @@ export const POST = withApi(
         ...(cached ? { cache_age_seconds: result.ageSeconds } : {}),
         ...result.data,
       },
-      creditsUsed: CREDITS.data,
       resultCount: 1,
       provider: result.source,
       cacheHit: cached,
@@ -165,6 +163,5 @@ export async function GET() {
       country: { name: "Türkiye" },
       indicator: { country: "TR", indicator: INDICATOR_NAMES, years: "1-60" },
     },
-    credits: CREDITS.data,
   });
 }

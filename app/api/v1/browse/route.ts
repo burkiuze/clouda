@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { withApi, readJson } from "@/lib/api/gateway";
 import { parseInt_ } from "@/lib/api/shapes";
 import { runBrowserSession, type BrowserAction } from "@/lib/browser/agent";
-import { CREDITS } from "@/lib/constants";
 import { CloudaError } from "@/lib/core/errors";
 
 export const dynamic = "force-dynamic";
@@ -23,11 +22,7 @@ const VALID_ACTIONS = new Set(["open", "follow", "find", "extract", "paginate", 
  * script for multi-step navigation.
  */
 export const POST = withApi(
-  {
-    operation: "browse",
-    capability: "browse",
-    estimateCredits: CREDITS.browseBase + CREDITS.browsePerStep * 8,
-  },
+  { operation: "browse" },
   async (req: NextRequest, ctx) => {
     const body = await readJson<BrowseBody>(req);
 
@@ -76,7 +71,6 @@ export const POST = withApi(
             }
           : {}),
       },
-      creditsUsed: CREDITS.browseBase + CREDITS.browsePerStep * result.steps,
       resultCount: result.pagesVisited.length,
       provider: "browser",
       steps: result.steps,
